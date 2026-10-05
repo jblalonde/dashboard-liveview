@@ -1,0 +1,141 @@
+<title>Rapport de campagne Minijeux</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Public+Sans:wght@400;500;600&display=swap">
+<style>
+/*__STYLES__*/
+</style>
+
+<header class="topbar" id="top">
+  <div class="topbar-inner">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <div class="brand-text">
+        <span class="eyebrow">Rapport de campagne</span>
+        <h1 id="campaign-title">Minijeux</h1>
+      </div>
+    </div>
+    <div class="freshness" id="freshness" role="status" aria-live="polite">
+      <span class="dot" id="freshness-dot"></span>
+      <span id="freshness-text">Chargement des données…</span>
+    </div>
+    <div class="actions">
+      <button type="button" class="btn" id="btn-refresh" hidden>Actualiser</button>
+      <button type="button" class="btn btn-ghost" id="btn-export-kpi" hidden>Exporter les KPI</button>
+      <button type="button" class="btn btn-ghost" id="btn-export-data" hidden>Exporter les données</button>
+    </div>
+  </div>
+
+  <form class="filters" id="filters" aria-label="Filtres">
+    <label class="field">
+      <span>Campagne</span>
+      <select id="f-campaign"></select>
+    </label>
+    <label class="field">
+      <span>Période</span>
+      <select id="f-period"></select>
+    </label>
+    <div class="field">
+      <span id="lbl-compare">Comparer à</span>
+      <div class="seg" role="radiogroup" aria-labelledby="lbl-compare" id="f-compare">
+        <button type="button" role="radio" data-v="prev" aria-checked="true">Période précédente</button>
+        <button type="button" role="radio" data-v="fy" aria-checked="false">FY26</button>
+      </div>
+    </div>
+    <div class="field">
+      <span id="lbl-region">BU</span>
+      <div class="chips" role="group" aria-labelledby="lbl-region" id="f-region"></div>
+    </div>
+    <div class="field">
+      <span id="lbl-banner">Bannière</span>
+      <div class="seg" role="radiogroup" aria-labelledby="lbl-banner" id="f-banner">
+        <button type="button" role="radio" data-v="all" aria-checked="true">Toutes</button>
+        <button type="button" role="radio" data-v="Couche-Tard" aria-checked="false">Couche-Tard</button>
+        <button type="button" role="radio" data-v="Circle K" aria-checked="false">Circle K</button>
+      </div>
+    </div>
+  </form>
+  <nav class="sections-nav" aria-label="Sections">
+    <a href="#audience">Audience et engagement</a>
+    <a href="#prix">Prix et distribution</a>
+    <a href="#mecaniques">Mécaniques de jeu</a>
+    <a href="#commercial">Impact commercial</a>
+    <a href="#definitions">Définitions</a>
+  </nav>
+</header>
+
+<div class="banner-msg" id="page-msg" hidden></div>
+
+<main class="page">
+  <section class="section" id="audience" aria-labelledby="h-audience">
+    <div class="section-head">
+      <h2 id="h-audience">Audience et engagement</h2>
+      <p class="section-sub" id="sub-audience"></p>
+    </div>
+    <div class="tiles" id="tiles-audience"></div>
+    <div class="grid-2">
+      <figure class="card chart-card" id="card-active"></figure>
+      <figure class="card chart-card" id="card-signups"></figure>
+    </div>
+    <figure class="card chart-card" id="card-downloads"></figure>
+  </section>
+
+  <section class="section" id="prix" aria-labelledby="h-prix">
+    <div class="section-head">
+      <h2 id="h-prix">Prix et distribution</h2>
+      <p class="section-sub" id="sub-prix"></p>
+    </div>
+    <div class="tiles" id="tiles-prix"></div>
+    <div class="grid-2">
+      <figure class="card chart-card" id="card-prizes-daily"></figure>
+      <figure class="card chart-card" id="card-entries"></figure>
+    </div>
+    <figure class="card chart-card" id="card-pacing"></figure>
+  </section>
+
+  <section class="section" id="mecaniques" aria-labelledby="h-meca">
+    <div class="section-head">
+      <h2 id="h-meca">Mécaniques de jeu</h2>
+      <p class="section-sub" id="sub-meca"></p>
+    </div>
+    <div class="tiles" id="tiles-meca"></div>
+    <div class="grid-2">
+      <figure class="card chart-card" id="card-bonus"></figure>
+      <figure class="card chart-card" id="card-badges"></figure>
+    </div>
+    <figure class="card chart-card" id="card-ads"></figure>
+  </section>
+
+  <section class="section" id="commercial" aria-labelledby="h-com">
+    <div class="section-head">
+      <h2 id="h-com">Impact commercial</h2>
+      <p class="section-sub" id="sub-com"></p>
+    </div>
+    <div class="tiles" id="tiles-com"></div>
+    <div class="grid-2">
+      <figure class="card chart-card" id="card-coupons"></figure>
+      <figure class="card chart-card" id="card-lift"></figure>
+    </div>
+  </section>
+
+  <section class="section" id="definitions" aria-labelledby="h-def">
+    <div class="section-head">
+      <h2 id="h-def">Définitions et sources</h2>
+      <p class="section-sub">Chaque KPI, sa définition et l'état de sa source de données.</p>
+    </div>
+    <div class="card table-wrap"><table class="data" id="def-table"></table></div>
+  </section>
+</main>
+
+<footer class="foot">
+  <span id="foot-text">Données agrégées seulement. Aucune donnée personnelle n'est affichée ni exportée.</span>
+  <a href="#top">Haut de page</a>
+</footer>
+
+<div class="tip" id="tip" role="tooltip" hidden></div>
+
+<script src="https://cdn.jsdelivr.net/npm/echarts@6.1.0/dist/echarts.min.js"></script>
+<script id="report-data" type="application/json">/*__DATA__*/</script>
+<script>
+/*__APP__*/
+</script>

@@ -46,13 +46,13 @@ python3 scripts/render_sql.py --campaign rpp-2026 --source table  # from rctapi_
 | `03_audience_weekly.sql` | WAU | week × region |
 | `04_prizes_by_promotion.sql` | Prix gagnés / échangés / remis en stock / restants, rythme vs plan linéaire | prize × partner × region |
 | `05_prizes_daily.sql` | Prix gagnés par jour (pacing curve) | day × region |
-| `06_grand_prize_entries.sql` | Participations au grand prix | day × region × source |
-| `07_bonus_actions_badges.sql` | Actions bonus et défis (badges), taux de complétion | action × region |
+| `06_grand_prize_entries.sql` | Participations au grand prix (sources pivotées en colonnes) | day × region |
+| `07_bonus_actions_badges.sql` | Actions bonus et défis (badges), taux de complétion, joueurs admissibles | action × region |
 | `08_referrals.sql` | Parrainages réussis, parrains | region |
 | `09_ads_by_partner.sql` | Impressions, vues complètes, vues uniques | partner × region |
 | `10_lift_purchases.sql` | Revenus LIFT, transactions, dépense moyenne, articles/panier | day × region |
 | `11_coupon_redemptions_daily.sql` | Coupons activés en magasin | day × region |
-| `12_app_downloads_daily.sql` | Téléchargements (per app; iOS web-referrer share) | day |
+| `12_app_downloads_daily.sql` | Téléchargements (per app; iOS web-referrer share), plus the same number of days before launch as a baseline | day |
 
 Roll a region up to `client_rollup` or to the total by **summing** counts. This works for distinct
 players too, because each player has exactly one province. Recompute ratios from the summed
@@ -84,5 +84,5 @@ period-level uniques.
 | 09 | ~37 s | 9 partners |
 | others | < 10 s | |
 
-Queries 01, 06 and 09 are close to the MCP's **60 s timeout**. The dashboard should run these
+Queries 01, 06 and 09 are close to the MCP's **60 s timeout**. Every query stays under the MCP's 1000-row limit for campaigns up to about 200 days. The dashboard should run these
 templates in the warehouse load job, not live against the MCP.
