@@ -326,7 +326,10 @@ FROM rctapi_minigame_editions WHERE deleted_at IS NULL ORDER BY start_at DESC`;
     { id: 'wau', section: 'audience', label: 'Actifs par semaine (moy.)', fmt: 'int', scope: 'period',
       calc: (x) => {
         const rows = rowsOf(x.res, 'q03'); if (!rows) return null;
-        const scoped = regionFilter(rows, x.regions).filter((r) => r.week_start >= mondayOf(x.rg.d0) && r.week_start <= x.rg.d1);
+        let scoped = regionFilter(rows, x.regions).filter((r) => r.week_start >= mondayOf(x.rg.d0) && r.week_start <= x.rg.d1);
+        // Average over complete weeks only; partial first/last weeks would drag it down.
+        const full = scoped.filter((r) => r.week_start >= x.rg.d0 && addDays(r.week_start, 6) <= x.rg.d1);
+        if (full.length) scoped = full;
         const weeks = [...new Set(scoped.map((r) => r.week_start))];
         return weeks.length ? sum(scoped, 'wau') / weeks.length : null;
       } },
@@ -348,7 +351,8 @@ FROM rctapi_minigame_editions WHERE deleted_at IS NULL ORDER BY start_at DESC`;
       spark: () => ({ qid: 'q01', f: (r) => r.games_played }) },
 
     { id: 'instant_prizes_won', section: 'prix', label: 'Prix gagnés', fmt: 'int', scope: 'period',
-      calc: (x) => { const rows = daily(x.res, 'q05', x.rg, x.regions); return rows && sum(rows, 'won'); } },
+      // Whole campaign includes the few prizes granted after play ended (late game completions).
+      calc: (x) => { const rows = daily(x.res, 'q05', x.rg, x.regions, { redeem: true }); return rows && sum(rows, 'won'); } },
     { id: 'instant_prizes_redeemed', section: 'prix', label: 'Prix échangés', fmt: 'int', scope: 'period',
       note: "Coupons activés en magasin, à la date d'activation. Toute la campagne inclut la période d'échange après la fin du jeu.",
       calc: (x) => { const rows = daily(x.res, 'q11', x.rg, x.regions, { allowUnassigned: x.allRegions, redeem: true }); return rows && sum(rows, 'coupon_activations'); },
