@@ -7,7 +7,7 @@
 #   ratio      -> store numerator/denominator, compute at query time
 #   stock      -> snapshot; sum across members, last value across time
 #   derived    -> computed from other KPIs / plan data
-# source: TBD until confirmed in the Couche-Tard MCP.
+# status: available | partial | missing — see docs/DATA_MAPPING.md (explored 2026-10-05).
 
 dimensions: [edition_id, date, bu_id, banner_id]
 comparisons: [previous_period, fy26_like_for_like, fy26_same_fiscal_period]
@@ -19,46 +19,52 @@ kpis:
     category: audience
     type: additive
     definition: App installs attributed by the MMP to a paid media source during the campaign window.
-    source: TBD (MMP — AppsFlyer/Adjust/Branch?)
     open: Attribution window? Is "paid" defined by media-source list?
+    status: partial
+    source: "rctapi_analytics_daily_observations (daily, per app CT/CK & OS; iOS source types in *_ios_dimensions). No paid-media attribution — needs MMP/UTM"
 
   - id: signups
     label_fr: Inscriptions
     category: audience
     type: additive
     definition: New accounts created in the period.
-    source: TBD (rctapi players/accounts)
     open: New platform accounts only, or also existing accounts opting into this edition?
+    status: available
+    source: "rctapi_minigame_players.created_at"
 
   - id: new_players
     label_fr: Nouveaux joueurs aux jeux Circle K
     category: audience
     type: distinct
     definition: Players whose first-ever game play (any edition) falls in the period.
-    source: TBD (rctapi plays, min(play_ts) per player)
     open: First-ever across all Circle K games, or first in this edition?
+    status: partial
+    source: "rctapi_minigame_players.created_at; 'new to any CK game' = anti-join rctapi_labatt_*, rctapi_nhl_game_participations, rctapi_games_external_participation"
 
   - id: unique_players
     label_fr: Joueurs uniques
     category: audience
     type: distinct
     definition: Distinct players with ≥1 game played in the period.
-    source: TBD
+    status: available
+    source: "rctapi_rpp_game_sessions (distinct rpp_player_id)"
 
   - id: dau
     label_fr: Utilisateurs actifs quotidiens
     category: audience
     type: distinct
     definition: Distinct active users per day; over a multi-day period, display the average daily value.
-    source: TBD (sessions)
     open: Is "active" = opened app, or = played?
+    status: available
+    source: "rctapi_user_login_days (surface rpp_webview + rpp_browser) or rctapi_rpp_game_sessions by contest_date"
 
   - id: wau
     label_fr: Utilisateurs actifs hebdomadaires
     category: audience
     type: distinct
     definition: Distinct active users per fiscal week; over longer periods, display the average weekly value.
-    source: TBD
+    status: available
+    source: "rctapi_user_login_days (surface rpp_webview + rpp_browser)"
 
   - id: sessions_per_user
     label_fr: Sessions par utilisateur
@@ -66,8 +72,9 @@ kpis:
     type: ratio
     numerator: sessions
     denominator: distinct active users
-    source: TBD
     open: Session timeout definition (e.g. 30 min inactivity)?
+    status: partial
+    source: "No app-session table for the game (login_count=0 on webview). Proxy: rctapi_rpp_game_sessions per active player-day"
 
   - id: repeat_visit_rate
     label_fr: Taux de visites répétées
@@ -75,22 +82,26 @@ kpis:
     type: ratio
     numerator: distinct users with ≥2 active days in the period
     denominator: distinct active users in the period
-    source: TBD
+    status: available
+    source: "rctapi_user_login_days or rctapi_rpp_game_sessions (active days per player)"
 
   - id: games_played
     label_fr: Parties jouées
     category: audience
     type: additive
     definition: Count of completed game plays.
-    source: TBD
 
   # ---------- Prix et distribution ----------
+    status: available
+    source: "rctapi_rpp_game_sessions (status won/lost/draw); rounds in rctapi_rpp_game_rounds"
+
   - id: instant_prizes_won
     label_fr: Prix instantanés gagnés
     category: prizes
     type: additive
     breakdowns: [prize_id, partner_id]
-    source: TBD
+    status: available
+    source: "rctapi_promotion_grant type='rpp_instant_prize' + rctapi_rpp_gift_card_codes"
 
   - id: instant_prizes_redeemed
     label_fr: Prix instantanés échangés
@@ -98,7 +109,8 @@ kpis:
     type: additive
     breakdowns: [prize_id, partner_id]
     definition: Redemptions in the period (by redemption date). Redemption rate shown as companion metric.
-    source: TBD
+    status: available
+    source: "rctapi_promotion_activations on promotions.campaign='rpp-2026'"
 
   - id: prizes_remaining
     label_fr: Prix restants
@@ -106,7 +118,8 @@ kpis:
     type: stock
     breakdowns: [prize_id, partner_id]
     definition: Initial inventory minus awarded, as of end of period.
-    source: TBD
+    status: available
+    source: "rctapi_promotions.quantity - grants per promotion (176 promotions = 53 prizes x 4 regions)"
 
   - id: distribution_pacing
     label_fr: Rythme de distribution (sous/sur-distribution)
@@ -114,22 +127,26 @@ kpis:
     type: derived
     breakdowns: [prize_id, partner_id]
     definition: actual_awarded_to_date / planned_to_date; UNDER/ON_TRACK/OVER by tolerance; projected run-out date.
-    source: prize awards + prize plan (plan curve likely NOT in MCP — needs input)
+    status: partial
+    source: "Actual from rctapi_promotion_grant; plan = linear between promotions.start_date/end_date; prize->partner mapping must be seeded"
 
   - id: grand_prize_entries
     label_fr: Participations au grand prix générées
     category: prizes
     type: additive
-    source: TBD
 
   # ---------- Mécaniques de jeu ----------
+    status: available
+    source: "rctapi_minigame_entries SUM(quantity) by source, contest_region_snapshot"
+
   - id: bonus_challenge_completions
     label_fr: Complétion des actions bonus et des défis
     category: mechanics
     type: additive
     breakdowns: [action_id]
     companion: completion rate = completers / exposed players
-    source: TBD
+    status: available
+    source: "rctapi_minigame_participation_bonus_actions + rctapi_minigame_participation_badges"
 
   - id: referrals
     label_fr: "Parrainage : participation et parrainages réussis"
@@ -137,7 +154,8 @@ kpis:
     type: additive
     measures: [referrers (distinct), invites_sent, successful_referrals]
     open: What makes a referral "successful" — signup, or first play?
-    source: TBD
+    status: partial
+    source: "rctapi_minigame_referrals (converted only); invites/participation not tracked"
 
   - id: partner_ad_impressions
     label_fr: Impressions et vues uniques des pubs, par partenaire
@@ -145,16 +163,19 @@ kpis:
     type: additive          # impressions additive; unique views are distinct
     breakdowns: [partner_id]
     measures: [impressions (additive), unique_viewers (distinct)]
-    source: TBD (ad server / in-app events)
 
   # ---------- Impact commercial ----------
+    status: available
+    source: "rctapi_minigame_participation_ad_serves -> rctapi_minigame_ads.advertiser (normalize names)"
+
   - id: store_traffic
     label_fr: Trafic en magasin
     category: commercial
     type: additive
     definition: Identified store visits (transactions) by campaign players.
     open: Players only, or total store traffic? Incremental vs. control?
-    source: TBD (POS / loyalty)
+    status: missing
+    source: "Not in MCP — needs POS data. Proxy: coupon activations"
 
   - id: coupon_traffic_contribution
     label_fr: Contribution des coupons au trafic
@@ -162,20 +183,23 @@ kpis:
     type: ratio
     numerator: visits with ≥1 campaign coupon redeemed
     denominator: store_traffic
-    source: TBD (coupons)
+    status: partial
+    source: "Numerator rctapi_promotion_activations; denominator (store traffic) missing"
 
   - id: lift_revenue
     label_fr: Revenus via LIFT
     category: commercial
     type: additive
-    source: TBD (LIFT)
     open: Gross vs net of discounts, taxes excluded? Currency?
+    status: partial
+    source: "rctapi_minigame_purchase_attributions event_type='LIFT' (only game-attributed purchases, no store)"
 
   - id: lift_transactions
     label_fr: Transactions LIFT
     category: commercial
     type: additive
-    source: TBD (LIFT)
+    status: partial
+    source: "rctapi_minigame_purchase_attributions event_type='LIFT'"
 
   - id: avg_spend_per_transaction
     label_fr: Dépense moyenne par transaction
@@ -183,6 +207,8 @@ kpis:
     type: ratio
     numerator: lift_revenue
     denominator: lift_transactions
+    status: partial
+    source: "rctapi_minigame_purchase_attributions: SUM(total_price)/COUNT(*)"
 
   - id: items_per_basket
     label_fr: Articles dans le panier
@@ -190,3 +216,5 @@ kpis:
     type: ratio
     numerator: items sold in LIFT transactions
     denominator: lift_transactions
+    status: partial
+    source: "rctapi_minigame_purchase_attributions: AVG(item_count)"
