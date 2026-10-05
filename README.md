@@ -2,7 +2,6 @@
 
 Campaign KPI dashboard (one filter per `rctapi_minigame_editions` edition), shareable and exportable to the customer.
 
-- `retro/` — **internal lessons-learned recap** (Jira + Harvest + campaign data). See `retro/README.md`
 - `dashboard/` — **the live dashboard** (published as a claude.ai artifact). See `dashboard/README.md`
 - `docs/ARCHITECTURE.md` — layers, data model, additivity rules, comparisons, pacing, sharing
 - `docs/DATA_MAPPING.md` — KPI → Couche-Tard MCP tables, regions/banners, gaps, why some data isn't in the MCP
