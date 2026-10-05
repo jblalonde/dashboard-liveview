@@ -23,7 +23,7 @@ then republish `dashboard/dist/index.html` to the same artifact URL.
 
 | Step | What happens |
 |---|---|
-| Refresh | The page runs the 12 report queries through the viewer's **Couche-Tard MCP** connector (`run_query`), 2 at a time, fastest first. It takes about 2 to 3 minutes for a full campaign. |
+| Refresh | The page runs the 18 report queries through the viewer's **Couche-Tard MCP** connector (`run_query`), 2 at a time, fastest first. It takes about 3 to 4 minutes for a full campaign. |
 | Campaign list | It first tries `rctapi_minigame_editions`. If the table doesn't exist yet, it falls back to the campaign list embedded from `seeds/campaigns.csv`. |
 | Snapshot | Each query's raw result is stored in the artifact's shared database (`campaigns/<code>/results/<qid>`, plus `campaigns/<code>` for the "data as of" time). Only editors can write it. Everyone with access reads it. |
 | Viewers without the connector | They see the last published snapshot, with its "Données au" timestamp. |
@@ -37,10 +37,10 @@ The page is organized in tabs, so each view stays short:
 
 | Tab | Content |
 |---|---|
-| Vue d'ensemble | 4 headline KPIs with sparklines (joueurs uniques, parties, prix échangés, téléchargements), 4 secondary KPIs, the active-player trend with the comparison period dashed, the split by BU, and auto-generated points of attention (pacing, unused inventory, redemption rate, data gaps) |
-| Audience | 9 audience KPIs; active players (Total / Par BU toggle), signups, downloads vs pre-launch |
-| Prix | 6 prize KPIs; won vs redeemed per day, pacing per partner (bar + 100 % marker + status), grand-prize entries by source |
-| Mécaniques | Bonus actions, badges and ads per partner as ranked bar lists |
+| Vue d'ensemble | 4 headline KPIs with sparklines (joueurs uniques, parties, prix échangés, téléchargements), 4 secondary KPIs, the active-player trend with the comparison period dashed, the split by BU, the player funnel, and auto-generated points of attention (pacing, unused inventory, redemption rate, data gaps) |
+| Audience | 9 audience KPIs; active players (Total / Par BU toggle), signups, downloads vs pre-launch, retention J1/J7/J30 by first-play week, consecutive-day streaks, play heatmap |
+| Prix | 6 prize KPIs; won vs redeemed per day, pacing per partner (bar + 100 % marker + status), grand-prize entries by source, prizes gifted to a friend |
+| Mécaniques | Bonus actions, badges, ads per partner, SMS/email consents |
 | Commercial | LIFT KPIs, coupons per day, LIFT revenue per week; store traffic flagged as missing |
 | Définitions | Every KPI with its French definition, source and data status |
 

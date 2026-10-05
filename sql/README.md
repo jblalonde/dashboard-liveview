@@ -52,6 +52,12 @@ python3 scripts/render_sql.py --campaign rpp-2026 --source table  # from rctapi_
 | `09_ads_by_partner.sql` | Impressions, vues complètes, vues uniques | partner × region |
 | `10_lift_purchases.sql` | Revenus LIFT, transactions, dépense moyenne, articles/panier | day × region |
 | `11_coupon_redemptions_daily.sql` | Coupons activés en magasin | day × region |
+| `13_funnel.sql` | Entonnoir : inscrits → ont joué → ont gagné un prix → ont échangé un prix (joueurs distincts) | region |
+| `14_retention.sql` | Rétention J1 / J7 / J30, avec les joueurs mesurables (`eligible_dN`) | first-play week × region |
+| `15_gifts.sql` | Prix offerts à un ami : envoyés, réclamés, expirés, expéditeurs, destinataires | region |
+| `16_play_heatmap.sql` | Parties par jour de semaine × heure (heure de l'Est) | dow × hour × region |
+| `17_streaks.sql` | Plus longue série de jours consécutifs, recalculée à partir des parties | streak bucket × region |
+| `18_consents.sql` | Consentements SMS / courriel sur la participation | region |
 | `12_app_downloads_daily.sql` | Téléchargements (per app; iOS web-referrer share), plus the same number of days before launch as a baseline | day |
 
 Roll a region up to `client_rollup` or to the total by **summing** counts. This works for distinct
@@ -82,6 +88,10 @@ period-level uniques.
 | 04 | ~7 s | inventory 1,497,400 · won 2,145,927 · released 1,667,598 · remaining 1,019,071 |
 | 06 | ~31 s | 4 sources × 4 regions |
 | 09 | ~37 s | 9 partners |
+| 13 | ~29 s | 362,287 signed up = signups KPI |
+| 14 | ~31 s | 36 rows; J30 measurable only for first plays up to Aug 15 |
+| 16 | ~19 s | 672 rows; total 4,094,254 = games played KPI |
+| 17 | ~32 s | 39,122 players with a 14+ day streak |
 | others | < 10 s | |
 
 Queries 01, 06 and 09 are close to the MCP's **60 s timeout**. Every query stays under the MCP's 1000-row limit for campaigns up to about 200 days. The dashboard should run these

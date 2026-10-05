@@ -261,3 +261,36 @@ kpis:
     source_fr: "rctapi_minigame_purchase_attributions"
     status: partial
     source: "rctapi_minigame_purchase_attributions: AVG(item_count)"
+
+# Complementary indicators (beyond the 23 contract KPIs). All verified against the data on 2026-10-05.
+extras:
+  - id: player_funnel
+    label_fr: Entonnoir des joueurs
+    definition_fr: "Joueurs inscrits pendant la campagne → ont joué au moins une partie → ont gagné au moins un prix → ont échangé au moins un prix. Les téléchargements ne sont pas reliés aux joueurs et restent hors de l'entonnoir."
+    source_fr: "rctapi_minigame_players, rctapi_rpp_game_sessions, rctapi_promotion_grant, rctapi_promotion_activations (sql/kpi/13)"
+    status: available
+  - id: retention_cohorts
+    label_fr: Rétention J1, J7, J30
+    definition_fr: "Part des joueurs qui ont rejoué exactement 1, 7 ou 30 jours après leur première partie, par semaine de première partie. Seuls les joueurs dont le jour N tombe avant la fin du jeu sont comptés."
+    source_fr: "rctapi_rpp_game_sessions (sql/kpi/14)"
+    status: available
+  - id: prize_gifts
+    label_fr: Prix offerts à un ami
+    definition_fr: "Prix gagnés transférés à une autre personne pendant la campagne : envoyés, réclamés, expirés, en attente."
+    source_fr: "rctapi_minigame_prize_transfers (sql/kpi/15)"
+    status: available
+  - id: play_heatmap
+    label_fr: Carte de chaleur des parties
+    definition_fr: "Parties commencées par jour de la semaine et par heure, en heure de l'Est."
+    source_fr: "rctapi_rpp_game_sessions.started_at (sql/kpi/16)"
+    status: available
+  - id: play_streaks
+    label_fr: Séries de jours consécutifs
+    definition_fr: "Plus longue suite de jours de jeu consécutifs par joueur, recalculée à partir des parties. Le champ longest_streak de la base n'est pas utilisé : il contient des valeurs impossibles (jusqu'à 57 jours pour une campagne de 56 jours)."
+    source_fr: "rctapi_rpp_game_sessions (sql/kpi/17)"
+    status: available
+  - id: consents
+    label_fr: Consentements SMS et courriel
+    definition_fr: "Participations au jeu avec consentement SMS, courriel, les deux, ou au moins un. Ce que chaque consentement permet doit être confirmé avant de parler de base marketing."
+    source_fr: "rctapi_minigame_participations (sql/kpi/18)"
+    status: partial

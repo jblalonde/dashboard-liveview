@@ -39,6 +39,7 @@ def main():
         "campaigns": list(csv.DictReader(open(ROOT / "seeds/campaigns.csv", encoding="utf-8"))),
         "regions": list(csv.DictReader(open(ROOT / "seeds/geo_region.csv", encoding="utf-8"))),
         "kpis": yaml.safe_load(open(ROOT / "semantic/kpis.yml", encoding="utf-8"))["kpis"],
+        "extras": yaml.safe_load(open(ROOT / "semantic/kpis.yml", encoding="utf-8")).get("extras", []),
     }
     html = (SRC / "index.html").read_text(encoding="utf-8")
     html = html.replace("/*__STYLES__*/", (SRC / "styles.css").read_text(encoding="utf-8"))

@@ -8,7 +8,7 @@
   const SERVER = 'Couche-Tard MCP';
   const TOOL = 'run_query';
   // Fast queries first so the page fills progressively; at most 2 in flight.
-  const QUERY_ORDER = ['q12', 'q10', 'q08', 'q04', 'q05', 'q11', 'q07', 'q03', 'q02', 'q01', 'q09', 'q06'];
+  const QUERY_ORDER = ['q12', 'q10', 'q08', 'q15', 'q18', 'q04', 'q05', 'q11', 'q07', 'q03', 'q02', 'q13', 'q01', 'q09', 'q14', 'q16', 'q06', 'q17'];
   const CONCURRENCY = 2;
   const LIVE_REFRESH_MS = 30 * 60 * 1000;
 
@@ -862,6 +862,7 @@ FROM rctapi_minigame_editions WHERE deleted_at IS NULL ORDER BY start_at DESC`;
         }
         card('card-bu', { title: 'Répartition par BU', note, body: items ? barList(items, { cls: 'tight' }) : emptyBody('La répartition') });
       }
+      renderFunnel(res, regions);
       renderAttention();
       return;
     }
@@ -942,6 +943,9 @@ FROM rctapi_minigame_editions WHERE deleted_at IS NULL ORDER BY start_at DESC`;
           });
         }
       }
+      renderRetention(res, regions, t);
+      renderStreaks(res, regions);
+      renderHeatmap(res, regions, t);
       return;
     }
 
@@ -1019,6 +1023,7 @@ FROM rctapi_minigame_editions WHERE deleted_at IS NULL ORDER BY start_at DESC`;
           body: scoped ? barList(src.map((s) => ({ name: s.label, value: s.v, max, label: FMT.pct0(s.v / total), sub: FMT.short(s.v) }))) : emptyBody('La répartition'),
         });
       }
+      renderGifts(res, regions);
       return;
     }
 
@@ -1062,6 +1067,7 @@ FROM rctapi_minigame_editions WHERE deleted_at IS NULL ORDER BY start_at DESC`;
           table: rows && { cols: [{ label: 'Partenaire', key: 'partner' }, { label: 'Impressions', key: 'impressions', num: true, fmt: FMT.int }, { label: 'Vues uniques', key: 'unique', num: true, fmt: FMT.int }, { label: 'Vues complètes', key: 'completed', num: true, fmt: FMT.int }, { label: 'Taux de complétion', key: 'rate', num: true, fmt: FMT.pct }], rows: parts },
         });
       }
+      renderConsents(res, regions);
       return;
     }
 
@@ -1104,6 +1110,151 @@ FROM rctapi_minigame_editions WHERE deleted_at IS NULL ORDER BY start_at DESC`;
         }
       }
     }
+  }
+
+
+  // ---------------------------------------------------------------------------
+  // Complementary views (funnel, retention, streaks, heatmap, gifts, consents).
+  // All player-level and recomputed from sessions, grants and transfers.
+  // ---------------------------------------------------------------------------
+  const sumBy = (rows, keys) => Object.fromEntries(keys.map((k) => [k, sum(rows, k)]));
+
+  function renderFunnel(res, regions) {
+    const rows = res.q13 ? regionFilter(res.q13.rows, regions) : null;
+    let body;
+    if (rows) {
+      const v = sumBy(rows, ['signed_up', 'played', 'won_prize', 'redeemed_prize']);
+      const steps = [
+        ['Inscrits pendant la campagne', v.signed_up, null],
+        ['Ont joué au moins une partie', v.played, v.signed_up],
+        ['Ont gagné au moins un prix', v.won_prize, v.played],
+        ['Ont échangé au moins un prix', v.redeemed_prize, v.won_prize],
+      ];
+      body = el('div', {},
+        el('div', { class: 'funnel' }, steps.map(([label, n, prev]) => el('div', { class: 'fstep' },
+          el('div', { class: 'fl' }, label),
+          el('div', { class: 'fv' }, FMT.int(n)),
+          el('div', { class: 'fs' }, prev == null ? '100 % des inscrits' : el('span', {}, el('b', {}, FMT.pct0(n / prev)), ' de l\'étape précédente · ', FMT.pct0(n / v.signed_up), ' des inscrits')),
+          el('div', { class: 'fbar', style: `width:${((n / (v.signed_up || 1)) * 100).toFixed(1)}%` })))));
+      const dl = res.q12 ? sum(res.q12.rows.filter((r) => r.in_campaign === 1), downloadsOf) : null;
+      if (dl) body.append(el('p', { class: 'side-note' }, `À titre indicatif : ${FMT.int(dl)} téléchargements de l'app pendant la campagne (toutes BU). Ils ne sont pas reliés aux joueurs et ne font donc pas partie de l'entonnoir.`));
+    }
+    card('card-funnel', {
+      title: 'Entonnoir des joueurs', note: 'Joueurs distincts, toute la campagne',
+      body: rows ? body : emptyBody("L'entonnoir"),
+      table: rows && { cols: [{ label: 'BU', key: 'region_code' }, { label: 'Inscrits', key: 'signed_up', num: true, fmt: FMT.int }, { label: 'Ont joué', key: 'played', num: true, fmt: FMT.int }, { label: 'Ont gagné', key: 'won_prize', num: true, fmt: FMT.int }, { label: 'Ont échangé', key: 'redeemed_prize', num: true, fmt: FMT.int }], rows },
+    });
+  }
+
+  function renderRetention(res, regions, t) {
+    const rows = res.q14 ? regionFilter(res.q14.rows, regions) : null;
+    let body;
+    let cohorts = [];
+    if (rows) {
+      const by = new Map();
+      for (const r of rows) {
+        const c = by.get(r.cohort_week) || { week: r.cohort_week, players: 0, e1: 0, r1: 0, e7: 0, r7: 0, e30: 0, r30: 0 };
+        c.players += r.players; c.e1 += r.eligible_d1; c.r1 += r.retained_d1; c.e7 += r.eligible_d7; c.r7 += r.retained_d7; c.e30 += r.eligible_d30; c.r30 += r.retained_d30;
+        by.set(r.cohort_week, c);
+      }
+      cohorts = [...by.values()].sort((a, b) => (a.week < b.week ? -1 : 1));
+      const tot = cohorts.reduce((a, c) => ({ e1: a.e1 + c.e1, r1: a.r1 + c.r1, e7: a.e7 + c.e7, r7: a.r7 + c.r7, e30: a.e30 + c.e30, r30: a.r30 + c.r30 }), { e1: 0, r1: 0, e7: 0, r7: 0, e30: 0, r30: 0 });
+      const shade = (rate) => `background: color-mix(in srgb, ${t.data} ${Math.round(6 + rate * 50)}%, transparent)`;
+      const cell = (r, e) => (e ? el('td', { class: 'cell', style: shade(r / e), title: `${FMT.int(r)} sur ${FMT.int(e)} joueurs mesurables` }, FMT.pct0(r / e)) : el('td', { class: 'na' }, '—'));
+      body = el('div', {},
+        el('div', { class: 'summary-row' },
+          [['J1', tot.r1, tot.e1], ['J7', tot.r7, tot.e7], ['J30', tot.r30, tot.e30]].map(([l, r, e]) => el('div', {}, el('b', {}, e ? FMT.pct0(r / e) : '—'), el('span', {}, `ont rejoué à ${l}`)))),
+        el('div', { class: 'table-wrap' }, el('table', { class: 'data cohort' },
+          el('thead', {}, el('tr', {}, ['1re partie, semaine du', 'Joueurs', 'J1', 'J7', 'J30'].map((h, i) => el('th', { class: i ? 'num' : null }, h)))),
+          el('tbody', {}, cohorts.map((c) => el('tr', {},
+            el('td', {}, fmtDay(c.week)), el('td', { class: 'num' }, FMT.int(c.players)),
+            cell(c.r1, c.e1), cell(c.r7, c.e7), cell(c.r30, c.e30)))))));
+    }
+    card('card-retention', {
+      title: 'Rétention par semaine de première partie',
+      note: "Part des joueurs qui ont rejoué exactement 1, 7 ou 30 jours après leur première partie · « — » : trop tôt pour mesurer avant la fin du jeu",
+      body: rows ? body : emptyBody('La rétention'),
+    });
+  }
+
+  const STREAK_ORDER = ['1', '2-3', '4-6', '7-13', '14-29', '30+'];
+  const STREAK_LABEL = { '1': '1 jour', '2-3': '2 à 3 jours', '4-6': '4 à 6 jours', '7-13': '7 à 13 jours', '14-29': '14 à 29 jours', '30+': '30 jours et plus' };
+  function streakFacts(res, regions) {
+    if (!res.q17) return null;
+    const rows = regionFilter(res.q17.rows, regions);
+    const by = Object.fromEntries(STREAK_ORDER.map((b) => [b, sum(rows.filter((r) => String(r.bucket) === b), 'players')]));
+    const total = STREAK_ORDER.reduce((a, b) => a + by[b], 0);
+    return { by, total, fourteen: by['14-29'] + by['30+'], max: Math.max(0, ...rows.map((r) => r.max_streak || 0)) };
+  }
+  function renderStreaks(res, regions) {
+    const f = streakFacts(res, regions);
+    const max = f ? Math.max(1, ...STREAK_ORDER.map((b) => f.by[b])) : 1;
+    card('card-streaks', {
+      title: 'Séries de jours consécutifs',
+      note: f ? `${FMT.int(f.fourteen)} joueurs ont joué 14 jours ou plus d'affilée · plus longue série : ${f.max} jours` : 'Plus longue série de jours de jeu consécutifs par joueur',
+      body: f ? barList(STREAK_ORDER.map((b) => ({ name: STREAK_LABEL[b], value: f.by[b], max, label: FMT.pct0(f.by[b] / (f.total || 1)), sub: FMT.short(f.by[b]) }))) : emptyBody('La répartition'),
+    });
+  }
+
+  const DOW = ['lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.', 'dim.'];
+  function renderHeatmap(res, regions, t) {
+    const rows = res.q16 ? regionFilter(res.q16.rows, regions) : null;
+    card('card-heatmap', {
+      title: 'Quand ils jouent', note: "Parties commencées par jour et par heure (heure de l'Est)",
+      body: rows ? chartBody('ch-heatmap', 250) : emptyBody('La carte de chaleur'),
+    });
+    if (!rows) return;
+    const grid = new Map();
+    for (const r of rows) { const k = `${r.dow}-${r.hour}`; grid.set(k, (grid.get(k) || 0) + r.games); }
+    const data = [];
+    let max = 1;
+    for (let d = 1; d <= 7; d++) for (let h = 0; h < 24; h++) { const v = grid.get(`${d}-${h}`) || 0; max = Math.max(max, v); data.push([h, d - 1, v]); }
+    drawChart('ch-heatmap', {
+      ...baseOption(t),
+      grid: { left: 4, right: 8, top: 4, bottom: 4, containLabel: true },
+      tooltip: { ...baseOption(t).tooltip, trigger: 'item', formatter: (p) => `<b>${DOW[p.value[1]]} ${p.value[0]} h</b><br>${FMT.int(p.value[2])} parties` },
+      xAxis: { type: 'category', data: Array.from({ length: 24 }, (_, h) => `${h} h`), splitArea: { show: false }, axisTick: { show: false }, axisLine: { show: false }, axisLabel: { color: t.muted, fontSize: 10, interval: 2 } },
+      yAxis: { type: 'category', data: DOW, inverse: true, axisTick: { show: false }, axisLine: { show: false }, axisLabel: { color: t.muted, fontSize: 11 } },
+      visualMap: { show: false, min: 0, max, inRange: { color: [t.surface, t.soft, t.data] } },
+      series: [{ type: 'heatmap', data, itemStyle: { borderColor: t.surface, borderWidth: 2, borderRadius: 3 }, emphasis: { itemStyle: { borderColor: t.ink, borderWidth: 1 } } }],
+    });
+  }
+
+  function renderGifts(res, regions) {
+    const rows = res.q15 ? regionFilter(res.q15.rows, regions) : null;
+    let body;
+    if (rows) {
+      const v = sumBy(rows, ['gifts_sent', 'gifts_claimed', 'gifts_expired', 'gifts_pending', 'gifts_cancelled', 'senders', 'recipients']);
+      body = el('div', {},
+        el('div', { class: 'summary-row' },
+          el('div', {}, el('b', {}, FMT.int(v.gifts_sent)), el('span', {}, 'prix offerts')),
+          el('div', {}, el('b', {}, FMT.int(v.senders)), el('span', {}, 'joueurs ont offert')),
+          el('div', {}, el('b', {}, FMT.int(v.recipients)), el('span', {}, 'amis ont reçu'))),
+        barList([['Réclamés par l\'ami', v.gifts_claimed], ['Expirés sans être réclamés', v.gifts_expired], ['En attente', v.gifts_pending], ['Annulés', v.gifts_cancelled]]
+          .filter(([, n]) => n > 0)
+          .map(([name, n]) => ({ name, value: n, max: v.gifts_sent || 1, label: FMT.pct0(n / (v.gifts_sent || 1)), sub: FMT.short(n) }))));
+    }
+    card('card-gifts', {
+      title: 'Prix offerts à un ami', note: "Prix gagnés qu'un joueur a transférés à quelqu'un d'autre · BU de l'expéditeur",
+      body: rows ? body : emptyBody('Les transferts'),
+    });
+  }
+
+  function renderConsents(res, regions) {
+    const rows = res.q18 ? regionFilter(res.q18.rows, regions) : null;
+    let body;
+    if (rows) {
+      const v = sumBy(rows, ['participations', 'sms_opt_in', 'email_opt_in', 'both_opt_in', 'any_opt_in']);
+      const max = v.participations || 1;
+      body = el('div', {},
+        barList([['SMS', v.sms_opt_in], ['Courriel', v.email_opt_in], ['Les deux', v.both_opt_in], ['Au moins un des deux', v.any_opt_in]]
+          .map(([name, n]) => ({ name, value: n, max, label: FMT.short(n), sub: FMT.pct0(n / max) }))),
+        el('p', { class: 'side-note' }, `Sur ${FMT.int(v.participations)} participations. Ce que chaque consentement permet (messages du jeu ou marketing de la bannière) reste à confirmer avant de parler de base marketing.`));
+    }
+    card('card-consents', {
+      title: 'Consentements recueillis', note: 'Joueurs ayant accepté de recevoir des messages',
+      body: rows ? body : emptyBody('Les consentements'),
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -1158,11 +1309,13 @@ FROM rctapi_minigame_editions WHERE deleted_at IS NULL ORDER BY start_at DESC`;
     const cls = { available: 'ok', partial: 'under', missing: 'over' };
     $('def-table').replaceChildren(
       el('thead', {}, el('tr', {}, ['KPI', 'Définition', 'Source', 'État'].map((h) => el('th', {}, h)))),
-      el('tbody', {}, DATA.kpis.map((k) => el('tr', {},
-        el('td', {}, k.label_fr),
-        el('td', {}, k.definition_fr || '—'),
-        el('td', {}, k.source_fr || '—'),
-        el('td', {}, el('span', { class: `state ${cls[k.status] || ''}` }, label[k.status] || k.status))))));
+      el('tbody', {}, [...DATA.kpis, ...(DATA.extras?.length ? [{ heading: 'Indicateurs complémentaires' }] : []), ...(DATA.extras || [])].map((k) => (k.heading
+        ? el('tr', {}, el('th', { colspan: 4, style: 'padding-top:18px' }, k.heading))
+        : el('tr', {},
+          el('td', {}, k.label_fr),
+          el('td', {}, k.definition_fr || '—'),
+          el('td', {}, k.source_fr || '—'),
+          el('td', {}, el('span', { class: `state ${cls[k.status] || ''}` }, label[k.status] || k.status)))))));
   }
   function renderFreshness() {
     const camp = currentCampaign();
@@ -1278,6 +1431,10 @@ FROM rctapi_minigame_editions WHERE deleted_at IS NULL ORDER BY start_at DESC`;
       f.downloads = sum(rows.filter((r) => r.in_campaign === 1), downloadsOf);
       f.downloadsBefore = sum(rows.filter((r) => r.in_campaign === 0), downloadsOf);
     }
+    const sf = streakFacts(res, regions);
+    if (sf) { f.streak14 = sf.fourteen; f.streakMax = sf.max; }
+    const q15 = scope('q15');
+    if (q15) { f.giftsSent = sum(q15, 'gifts_sent'); f.giftsClaimed = sum(q15, 'gifts_claimed'); f.giftSenders = sum(q15, 'senders'); }
     const q10 = scope('q10');
     if (q10) { f.liftRevenue = sum(q10, 'lift_revenue'); f.liftTx = sum(q10, 'lift_transactions'); }
     return f;
@@ -1326,6 +1483,10 @@ FROM rctapi_minigame_editions WHERE deleted_at IS NULL ORDER BY start_at DESC`;
       add({ bg: W.blue, ink: W.paper, acc: '#3d5ff5', motif: 'stripes', kicker: 'En route vers le grand prix', num: b.v, fmt: b.fmt, unit: b.unit ? `${b.unit} de participations` : 'participations',
         line: f.unique ? `Environ <b>${nf.format(f.entries / f.unique)}</b> participations par joueur.` : null });
     }
+    if (f.streak14) add({ bg: W.night, ink: W.paper, acc: '#1b2030', motif: 'stripes', kicker: 'Les plus fidèles', num: f.streak14, unit: 'joueurs',
+      line: `ont joué <b>14 jours ou plus d'affilée</b>. La plus longue série : <b>${f.streakMax} jours</b>.` });
+    if (f.giftsClaimed) add({ bg: W.pink, ink: W.ink, acc: '#ffb8d4', motif: 'disc', light: true, kicker: 'Et ils ont partagé', num: f.giftsClaimed, unit: 'prix offerts à un ami',
+      line: `ont été réclamés, sur ${FMT.int(f.giftsSent)} prix offerts par ${FMT.int(f.giftSenders)} joueurs.` });
     if (f.topAction) add({ bg: W.mint, ink: W.ink, acc: '#3fd9a3', motif: 'arc', light: true, kicker: 'Les mécaniques qui ont marché', num: f.topActionPlayers, unit: 'joueurs',
       line: `ont choisi « ${escapeHtml(f.topAction)} », l'action bonus la plus populaire.` + (f.referrals ? ` Et <b>${FMT.int(f.referrals)}</b> parrainages ont abouti.` : '') });
     if (f.impressions) {
@@ -1446,6 +1607,7 @@ FROM rctapi_minigame_editions WHERE deleted_at IS NULL ORDER BY start_at DESC`;
     wrap.lastFocus?.focus?.();
   }
   $('btn-wrap').addEventListener('click', openWrap);
+  window.addEventListener('hashchange', () => { if (location.hash === '#bilan' && $('wrap').hidden) { if (wrapAvailable()) openWrap(); else wrap.autoOpen = true; } });
   $('wrap-close').addEventListener('click', closeWrap);
   $('wrap-pause').addEventListener('click', () => setPaused(!wrap.paused));
   $('wrap-prev').addEventListener('click', () => showSlide(wrap.i - 1));
@@ -1713,13 +1875,13 @@ FROM rctapi_minigame_editions WHERE deleted_at IS NULL ORDER BY start_at DESC`;
   $('btn-export-data').addEventListener('click', () => {
     const camp = currentCampaign();
     const res = state.results[camp.code] || {};
-    const dims = ['campaign', 'day', 'week_start', 'region_code', 'partner', 'prize_fr', 'promotion_id', 'kind', 'key', 'title_fr', 'in_campaign'];
+    const dims = ['campaign', 'day', 'week_start', 'cohort_week', 'region_code', 'partner', 'prize_fr', 'promotion_id', 'kind', 'key', 'title_fr', 'in_campaign', 'bucket', 'dow', 'hour'];
     const rows = [['jeu_de_donnees', 'jour_ou_semaine', 'bu', 'partenaire', 'element', 'mesure', 'valeur']];
     for (const qid of Object.keys(DATA.queries)) {
       for (const r of res[qid]?.rows || []) {
         for (const [m, v] of Object.entries(r)) {
           if (dims.includes(m) || v == null || typeof v !== 'number') continue;
-          rows.push([DATA.queries[qid].file.replace('.sql', ''), r.day || r.week_start || '', r.region_code || '', r.partner || '', r.prize_fr || r.title_fr || r.key || '', m, v]);
+          rows.push([DATA.queries[qid].file.replace('.sql', ''), r.day || r.week_start || r.cohort_week || '', r.region_code || '', r.partner || '', r.prize_fr || r.title_fr || r.key || r.bucket || (r.dow ? `${DOW[r.dow - 1]} ${r.hour} h` : ''), m, v]);
         }
       }
     }
