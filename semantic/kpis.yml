@@ -1,0 +1,192 @@
+# KPI contract — single source of truth for definitions.
+# The dashboard, exports and ad-hoc MCP queries must all derive from these definitions.
+#
+# type:
+#   additive   -> sum across any dimension
+#   distinct   -> distinct count; store HLL sketch or compute per grain
+#   ratio      -> store numerator/denominator, compute at query time
+#   stock      -> snapshot; sum across members, last value across time
+#   derived    -> computed from other KPIs / plan data
+# source: TBD until confirmed in the Couche-Tard MCP.
+
+dimensions: [edition_id, date, bu_id, banner_id]
+comparisons: [previous_period, fy26_like_for_like, fy26_same_fiscal_period]
+
+kpis:
+  # ---------- Audience et engagement ----------
+  - id: paid_app_installs
+    label_fr: Téléchargements d'app via le média payant
+    category: audience
+    type: additive
+    definition: App installs attributed by the MMP to a paid media source during the campaign window.
+    source: TBD (MMP — AppsFlyer/Adjust/Branch?)
+    open: Attribution window? Is "paid" defined by media-source list?
+
+  - id: signups
+    label_fr: Inscriptions
+    category: audience
+    type: additive
+    definition: New accounts created in the period.
+    source: TBD (rctapi players/accounts)
+    open: New platform accounts only, or also existing accounts opting into this edition?
+
+  - id: new_players
+    label_fr: Nouveaux joueurs aux jeux Circle K
+    category: audience
+    type: distinct
+    definition: Players whose first-ever game play (any edition) falls in the period.
+    source: TBD (rctapi plays, min(play_ts) per player)
+    open: First-ever across all Circle K games, or first in this edition?
+
+  - id: unique_players
+    label_fr: Joueurs uniques
+    category: audience
+    type: distinct
+    definition: Distinct players with ≥1 game played in the period.
+    source: TBD
+
+  - id: dau
+    label_fr: Utilisateurs actifs quotidiens
+    category: audience
+    type: distinct
+    definition: Distinct active users per day; over a multi-day period, display the average daily value.
+    source: TBD (sessions)
+    open: Is "active" = opened app, or = played?
+
+  - id: wau
+    label_fr: Utilisateurs actifs hebdomadaires
+    category: audience
+    type: distinct
+    definition: Distinct active users per fiscal week; over longer periods, display the average weekly value.
+    source: TBD
+
+  - id: sessions_per_user
+    label_fr: Sessions par utilisateur
+    category: audience
+    type: ratio
+    numerator: sessions
+    denominator: distinct active users
+    source: TBD
+    open: Session timeout definition (e.g. 30 min inactivity)?
+
+  - id: repeat_visit_rate
+    label_fr: Taux de visites répétées
+    category: audience
+    type: ratio
+    numerator: distinct users with ≥2 active days in the period
+    denominator: distinct active users in the period
+    source: TBD
+
+  - id: games_played
+    label_fr: Parties jouées
+    category: audience
+    type: additive
+    definition: Count of completed game plays.
+    source: TBD
+
+  # ---------- Prix et distribution ----------
+  - id: instant_prizes_won
+    label_fr: Prix instantanés gagnés
+    category: prizes
+    type: additive
+    breakdowns: [prize_id, partner_id]
+    source: TBD
+
+  - id: instant_prizes_redeemed
+    label_fr: Prix instantanés échangés
+    category: prizes
+    type: additive
+    breakdowns: [prize_id, partner_id]
+    definition: Redemptions in the period (by redemption date). Redemption rate shown as companion metric.
+    source: TBD
+
+  - id: prizes_remaining
+    label_fr: Prix restants
+    category: prizes
+    type: stock
+    breakdowns: [prize_id, partner_id]
+    definition: Initial inventory minus awarded, as of end of period.
+    source: TBD
+
+  - id: distribution_pacing
+    label_fr: Rythme de distribution (sous/sur-distribution)
+    category: prizes
+    type: derived
+    breakdowns: [prize_id, partner_id]
+    definition: actual_awarded_to_date / planned_to_date; UNDER/ON_TRACK/OVER by tolerance; projected run-out date.
+    source: prize awards + prize plan (plan curve likely NOT in MCP — needs input)
+
+  - id: grand_prize_entries
+    label_fr: Participations au grand prix générées
+    category: prizes
+    type: additive
+    source: TBD
+
+  # ---------- Mécaniques de jeu ----------
+  - id: bonus_challenge_completions
+    label_fr: Complétion des actions bonus et des défis
+    category: mechanics
+    type: additive
+    breakdowns: [action_id]
+    companion: completion rate = completers / exposed players
+    source: TBD
+
+  - id: referrals
+    label_fr: "Parrainage : participation et parrainages réussis"
+    category: mechanics
+    type: additive
+    measures: [referrers (distinct), invites_sent, successful_referrals]
+    open: What makes a referral "successful" — signup, or first play?
+    source: TBD
+
+  - id: partner_ad_impressions
+    label_fr: Impressions et vues uniques des pubs, par partenaire
+    category: mechanics
+    type: additive          # impressions additive; unique views are distinct
+    breakdowns: [partner_id]
+    measures: [impressions (additive), unique_viewers (distinct)]
+    source: TBD (ad server / in-app events)
+
+  # ---------- Impact commercial ----------
+  - id: store_traffic
+    label_fr: Trafic en magasin
+    category: commercial
+    type: additive
+    definition: Identified store visits (transactions) by campaign players.
+    open: Players only, or total store traffic? Incremental vs. control?
+    source: TBD (POS / loyalty)
+
+  - id: coupon_traffic_contribution
+    label_fr: Contribution des coupons au trafic
+    category: commercial
+    type: ratio
+    numerator: visits with ≥1 campaign coupon redeemed
+    denominator: store_traffic
+    source: TBD (coupons)
+
+  - id: lift_revenue
+    label_fr: Revenus via LIFT
+    category: commercial
+    type: additive
+    source: TBD (LIFT)
+    open: Gross vs net of discounts, taxes excluded? Currency?
+
+  - id: lift_transactions
+    label_fr: Transactions LIFT
+    category: commercial
+    type: additive
+    source: TBD (LIFT)
+
+  - id: avg_spend_per_transaction
+    label_fr: Dépense moyenne par transaction
+    category: commercial
+    type: ratio
+    numerator: lift_revenue
+    denominator: lift_transactions
+
+  - id: items_per_basket
+    label_fr: Articles dans le panier
+    category: commercial
+    type: ratio
+    numerator: items sold in LIFT transactions
+    denominator: lift_transactions
