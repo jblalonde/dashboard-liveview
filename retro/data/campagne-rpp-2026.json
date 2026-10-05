@@ -1,0 +1,15 @@
+{
+ "campaign": "RPP 2026", "play_start": "2026-07-21", "play_end": "2026-09-14", "redemption_end": "2026-09-19",
+ "source_as_of": "2026-10-05",
+ "unique_players_by_region": {"ATL": 24598, "QC": 190701, "CC": 87738, "WC": 40551},
+ "stores_by_region": {"ATL": 378, "QC": 691, "CC": 634, "WC": 289},
+ "stores_note": "Magasins listés dans l'app (rctapi_stores, non supprimés), répartis par code postal. À confirmer avec le réseau réel.",
+ "prize_inventory": 1497400, "prize_remaining": 1019071, "partners_total": 16, "partners_under_plan": 15,
+ "funnel": {"signed_up": 362287, "played": 342329, "won_prize": 289140, "redeemed_prize": 116965},
+ "gifts": {"sent": 187149, "claimed": 58172, "expired": 128845},
+ "retention_d30": {"launch_week": 0.36, "launch_week_label": "20 juillet", "late_week": 0.17, "late_week_label": "10 août"},
+ "checkout_action": {"players": 2752, "share": 0.008},
+ "games_by_hour": [353199,130948,76588,55158,59451,99990,186751,255326,264930,260463,246369,231664,229443,193301,172524,169759,172173,163993,156102,145533,138961,129947,111921,90202],
+ "spike": {"day": "2026-08-27", "prizes_won": 124531, "median_day": 37136},
+ "sources": "Couche-Tard MCP · sql/kpi/02, 04, 05, 07, 13, 14, 15 et requêtes de vérification du 2026-10-05"
+}

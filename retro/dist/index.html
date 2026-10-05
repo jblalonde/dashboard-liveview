@@ -1,0 +1,545 @@
+<title>Ce que RPP 2026 nous apprend</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Public+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: editorial retro document — hero, two sections of finding cards (project, campaign), shared action plan.
+   Each card reads left to right: the number, what it means, our proposal. Story mode replays the same cards full screen. */
+:root {
+  --bg: #f5f4f0;
+  --paper: #ffffff;
+  --ink: #15171b;
+  --ink-2: #474a51;
+  --muted: #7b7e85;
+  --line: #e4e3de;
+  --sunken: #efeee9;
+  --projet: #e8590c;
+  --projet-wash: #fff0e6;
+  --campagne: #2648f0;
+  --campagne-wash: #ebefff;
+  --plan: #0f8a5f;
+  --plan-wash: #e6f6ef;
+  --chart: #2648f0;
+  --chart-soft: #c9d3fb;
+  --mark: #15171b;
+  --display: "Bricolage Grotesque", "Public Sans", system-ui, sans-serif;
+  --body: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --gutter: clamp(16px, 4vw, 48px);
+  --maxw: 1120px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #101114; --paper: #191a1e; --ink: #f2f2ef; --ink-2: #c6c7cb; --muted: #8e9097; --line: #2a2b30; --sunken: #222328;
+    --projet: #ff8a4c; --projet-wash: #3a2215; --campagne: #8aa2ff; --campagne-wash: #1d2547; --plan: #3ccf96; --plan-wash: #133227;
+    --chart: #6f8cff; --chart-soft: #2c3a73; --mark: #f2f2ef; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #101114; --paper: #191a1e; --ink: #f2f2ef; --ink-2: #c6c7cb; --muted: #8e9097; --line: #2a2b30; --sunken: #222328;
+  --projet: #ff8a4c; --projet-wash: #3a2215; --campagne: #8aa2ff; --campagne-wash: #1d2547; --plan: #3ccf96; --plan-wash: #133227;
+  --chart: #6f8cff; --chart-soft: #2c3a73; --mark: #f2f2ef; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.55; margin: 0; }
+h1, h2, h3 { margin: 0; text-wrap: balance; }
+button, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--campagne); outline-offset: 2px; border-radius: 4px; }
+
+.hero { padding-inline: var(--gutter); padding-block: 56px 40px; border-bottom: 1px solid var(--line); background: var(--paper); }
+.hero-inner { max-width: var(--maxw); margin-inline: auto; display: flex; flex-direction: column; gap: 16px; }
+.eyebrow { font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--projet); }
+.hero h1 { font-family: var(--display); font-weight: 800; font-size: clamp(38px, 7vw, 76px); line-height: .98; letter-spacing: -.035em; max-width: 14ch; }
+.hero h1 em { font-style: normal; color: var(--campagne); }
+.lede { font-size: 18px; color: var(--ink-2); max-width: 60ch; margin: 0; }
+.hero-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.btn { display: inline-flex; align-items: center; border: 1px solid var(--line); background: var(--paper); color: var(--ink); border-radius: 999px; padding: 9px 16px; font-weight: 600; font-size: 14px; cursor: pointer; text-decoration: none; }
+.btn:hover { background: var(--sunken); }
+.btn.primary { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.btn.primary:hover { opacity: .9; }
+.sources { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: var(--muted); }
+.sources b { color: var(--ink-2); font-weight: 600; }
+
+.doc { max-width: var(--maxw); margin-inline: auto; padding-inline: var(--gutter); padding-block: 24px 48px; display: flex; flex-direction: column; gap: 48px; }
+.sec-head { display: flex; flex-direction: column; gap: 6px; margin-bottom: 18px; }
+.sec-head h2 { font-family: var(--display); font-size: clamp(26px, 4vw, 36px); font-weight: 800; letter-spacing: -.02em; }
+.sec-head p { margin: 0; color: var(--muted); }
+.tag { align-self: flex-start; font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; padding: 3px 10px; border-radius: 999px; }
+.t-projet { background: var(--projet-wash); color: var(--projet); }
+.t-campagne { background: var(--campagne-wash); color: var(--campagne); }
+.t-plan { background: var(--plan-wash); color: var(--plan); }
+
+/* Finding card: number | meaning | proposal */
+.cards { display: flex; flex-direction: column; gap: 14px; }
+.card {
+  container-type: inline-size; background: var(--paper); border: 1px solid var(--line); border-radius: 16px; padding: 22px 24px;
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr) minmax(0, 1fr); gap: 20px 28px; align-items: start;
+}
+@media (max-width: 860px) { .card { grid-template-columns: minmax(0, 1fr); } }
+.c-num { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.c-num .k { font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.c-num .big { font-family: var(--display); font-weight: 800; font-size: clamp(40px, 6vw, 58px); letter-spacing: -.035em; line-height: 1; font-variant-numeric: tabular-nums; }
+.c-num .unit { font-family: var(--display); font-weight: 600; font-size: 17px; line-height: 1.2; }
+.c-mean { min-width: 0; }
+.c-mean p { margin: 0 0 10px; color: var(--ink-2); overflow-wrap: anywhere; }
+.c-mean p b { color: var(--ink); }
+.c-mean .src { font-size: 12px; color: var(--muted); margin: 0; }
+.c-prop { min-width: 0; border-radius: 12px; padding: 14px 16px; background: var(--sunken); }
+.c-prop .lbl { font-size: 11.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--plan); display: block; margin-bottom: 4px; }
+.c-prop p { margin: 0; font-weight: 500; overflow-wrap: anywhere; }
+.card .viz { margin-top: 12px; }
+.viz svg { display: block; width: 100%; height: auto; overflow: visible; }
+.viz text { font-family: var(--body); fill: var(--muted); font-size: 11px; }
+.viz .lab { fill: var(--ink-2); }
+.viz .val { fill: var(--ink); font-weight: 600; }
+
+/* Plan */
+.plan-tools { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 12px; }
+.plan-count { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 14px; color: var(--ink-2); }
+.plan-count b { font-family: var(--display); font-size: 20px; color: var(--ink); margin-right: 4px; }
+.plan-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.plan { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 16px; background: var(--paper); overflow: hidden; }
+.plan li { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 14px 18px; border-top: 1px solid var(--line); }
+.plan li:first-child { border-top: 0; }
+.plan .n { font-family: var(--display); font-weight: 800; color: var(--muted); }
+.plan .t { min-width: 0; overflow-wrap: anywhere; }
+.plan .t small { display: block; color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+.plan li.retenue .n { color: var(--plan); }
+.plan li.ecartee .t { color: var(--muted); text-decoration: line-through; }
+.status { display: inline-flex; background: var(--sunken); border-radius: 999px; padding: 2px; flex-wrap: wrap; }
+.status button { border: 0; background: none; border-radius: 999px; padding: 4px 10px; font-size: 12.5px; cursor: pointer; color: var(--muted); white-space: nowrap; }
+.status button[aria-pressed="true"] { background: var(--paper); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+.status button[aria-pressed="true"][data-v="retenue"] { color: var(--plan); }
+.status[aria-disabled="true"] button { cursor: default; }
+@media (max-width: 640px) { .plan li { grid-template-columns: 24px minmax(0, 1fr); } .plan .status { grid-column: 2; justify-self: start; } }
+
+.foot { max-width: var(--maxw); margin-inline: auto; padding-inline: var(--gutter); padding-block: 0 40px; color: var(--muted); font-size: 12.5px; }
+.toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--ink); color: var(--paper); padding: 10px 16px; border-radius: 999px; font-size: 13.5px; z-index: 60; }
+
+/* ---------- Story mode (single look) ---------- */
+.story { position: fixed; inset: 0; z-index: 100; background: #08090c; display: grid; place-items: center; font-family: var(--display); }
+.frame { position: relative; width: min(460px, 100vw); height: min(818px, 100%); max-height: 100%; aspect-ratio: 9 / 16; border-radius: 18px; overflow: hidden; color: #fbfaf7; background: #14161c; }
+@media (max-width: 520px) { .frame { width: 100vw; height: 100%; border-radius: 0; aspect-ratio: auto; } }
+.progress { position: absolute; top: 12px; left: 12px; right: 12px; display: flex; gap: 3px; z-index: 5; }
+.progress span { flex: 1; height: 3px; border-radius: 2px; background: rgba(255,255,255,.3); overflow: hidden; }
+.progress i { display: block; height: 100%; width: 0; background: currentColor; }
+.top { position: absolute; top: 24px; left: 16px; right: 12px; display: flex; justify-content: space-between; align-items: center; z-index: 6; }
+.brand { font-size: 13px; font-weight: 600; opacity: .85; }
+.top-actions { display: flex; gap: 6px; }
+.pill-btn { border: 0; background: rgba(255,255,255,.16); color: inherit; font: 600 12px var(--body); padding: 6px 10px; border-radius: 999px; cursor: pointer; }
+.frame.light .pill-btn { background: rgba(0,0,0,.1); }
+.frame.light .progress span { background: rgba(0,0,0,.18); }
+.nav { position: absolute; top: 70px; bottom: 0; border: 0; background: transparent; cursor: pointer; z-index: 4; }
+.nav.prev { left: 0; width: 32%; } .nav.next { right: 0; width: 68%; }
+.stage { position: absolute; inset: 0; }
+.scr { position: absolute; inset: 0; padding: 86px 26px 30px; display: flex; flex-direction: column; justify-content: flex-end; gap: 10px; background: var(--s-bg); color: var(--s-ink); overflow: hidden; }
+.scr > * { position: relative; z-index: 2; }
+.scr .motif { position: absolute; z-index: 1; pointer-events: none; }
+.scr .motif.disc { width: 120%; aspect-ratio: 1; border-radius: 50%; right: -60%; top: -40%; background: var(--s-acc); }
+.scr .motif.ring { width: 80%; aspect-ratio: 1; border-radius: 50%; left: -25%; top: 4%; border: 28px solid var(--s-acc); }
+.scr .motif.stripes { inset: 0 0 auto 0; height: 48%; background: repeating-linear-gradient(-12deg, var(--s-acc) 0 20px, transparent 20px 50px); }
+.scr .sect { font: 700 11.5px var(--body); letter-spacing: .08em; text-transform: uppercase; opacity: .8; }
+.scr .kick { font-size: 17px; font-weight: 600; line-height: 1.25; }
+.scr .big { font-size: clamp(60px, 18vw, 88px); font-weight: 800; line-height: .9; letter-spacing: -.045em; font-variant-numeric: tabular-nums; }
+.scr .unit { font-size: 22px; font-weight: 800; letter-spacing: -.02em; line-height: 1.05; }
+.scr .mean { font: 400 14.5px/1.45 var(--body); opacity: .92; margin: 0; }
+.scr .mean b { font-weight: 700; }
+.scr .prop { font: 500 14px/1.4 var(--body); margin: 4px 0 0; padding: 12px 14px; border-radius: 12px; background: rgba(255,255,255,.14); }
+.scr.light .prop { background: rgba(0,0,0,.07); }
+.scr .prop b { display: block; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 2px; opacity: .8; }
+.scr .viz svg { width: 100%; height: auto; display: block; }
+.scr .viz text { fill: currentColor; opacity: .8; font: 500 10.5px var(--body); }
+.scr .cta { display: flex; gap: 8px; flex-wrap: wrap; position: relative; z-index: 6; }
+.scr .cta button { border: 0; border-radius: 999px; padding: 10px 16px; font: 700 14px var(--body); cursor: pointer; background: var(--s-ink); color: var(--s-bg); }
+.rise { animation: rise .55s cubic-bezier(.2,.8,.2,1) both; }
+.rise.d1 { animation-delay: .07s; } .rise.d2 { animation-delay: .16s; } .rise.d3 { animation-delay: .28s; }
+@keyframes rise { from { opacity: 0; transform: translateY(16px); } }
+@media (prefers-reduced-motion: reduce) { .rise { animation: none; } }
+
+</style>
+
+<header class="hero">
+  <div class="hero-inner">
+    <span class="eyebrow">Bilan interne · ne pas partager au client</span>
+    <h1>Ce que <em>RPP 2026</em> nous apprend</h1>
+    <p class="lede" id="lede"></p>
+    <div class="hero-actions">
+      <button type="button" class="btn primary" id="btn-story">Lancer le bilan</button>
+      <a class="btn" href="#plan">Aller au plan d'action</a>
+    </div>
+    <div class="sources" id="sources"></div>
+  </div>
+</header>
+
+<main class="doc">
+  <section aria-labelledby="h-projet">
+    <div class="sec-head"><span class="tag t-projet">Le projet</span><h2 id="h-projet">Comment on l'a livré</h2><p>Jira (RPPREV) et Harvest (CTRPP), au niveau de l'équipe.</p></div>
+    <div class="cards" id="cards-projet"></div>
+  </section>
+  <section aria-labelledby="h-campagne">
+    <div class="sec-head"><span class="tag t-campagne">La campagne</span><h2 id="h-campagne">Comment elle a performé</h2><p>Données du jeu, via le MCP Couche-Tard.</p></div>
+    <div class="cards" id="cards-campagne"></div>
+  </section>
+  <section id="plan" aria-labelledby="h-plan">
+    <div class="sec-head"><span class="tag t-plan">Plan d'action</span><h2 id="h-plan">Pour la prochaine édition</h2><p id="plan-sub">Statut partagé avec l'équipe. Changez-le pendant la rétro.</p></div>
+    <div class="plan-tools">
+      <div class="plan-count" id="plan-count"></div>
+      <div class="plan-actions">
+        <button type="button" class="btn" id="btn-copy">Copier en Markdown</button>
+        <button type="button" class="btn" id="btn-md" hidden>Télécharger (.md)</button>
+      </div>
+    </div>
+    <ol class="plan" id="plan-list"></ol>
+  </section>
+</main>
+<footer class="foot" id="foot"></footer>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<div class="story" id="story" role="dialog" aria-modal="true" aria-label="Bilan d'apprentissage" hidden>
+  <div class="frame" id="frame">
+    <div class="progress" id="progress" aria-hidden="true"></div>
+    <div class="top">
+      <span class="brand" id="story-brand">RPP 2026 · apprentissages</span>
+      <div class="top-actions">
+        <button type="button" class="pill-btn" id="story-pause">Pause</button>
+        <button type="button" class="pill-btn" id="story-close">Fermer</button>
+      </div>
+    </div>
+    <div class="stage" id="stage" aria-live="polite"></div>
+    <button type="button" class="nav prev" id="story-prev" aria-label="Écran précédent"></button>
+    <button type="button" class="nav next" id="story-next" aria-label="Écran suivant"></button>
+  </div>
+</div>
+
+<script id="retro-data" type="application/json">{"campagne-rpp-2026": {"campaign": "RPP 2026", "play_start": "2026-07-21", "play_end": "2026-09-14", "redemption_end": "2026-09-19", "source_as_of": "2026-10-05", "unique_players_by_region": {"ATL": 24598, "QC": 190701, "CC": 87738, "WC": 40551}, "stores_by_region": {"ATL": 378, "QC": 691, "CC": 634, "WC": 289}, "stores_note": "Magasins listés dans l'app (rctapi_stores, non supprimés), répartis par code postal. À confirmer avec le réseau réel.", "prize_inventory": 1497400, "prize_remaining": 1019071, "partners_total": 16, "partners_under_plan": 15, "funnel": {"signed_up": 362287, "played": 342329, "won_prize": 289140, "redeemed_prize": 116965}, "gifts": {"sent": 187149, "claimed": 58172, "expired": 128845}, "retention_d30": {"launch_week": 0.36, "launch_week_label": "20 juillet", "late_week": 0.17, "late_week_label": "10 août"}, "checkout_action": {"players": 2752, "share": 0.008}, "games_by_hour": [353199, 130948, 76588, 55158, 59451, 99990, 186751, 255326, 264930, 260463, 246369, 231664, 229443, 193301, 172524, 169759, 172173, 163993, 156102, 145533, 138961, 129947, 111921, 90202], "spike": {"day": "2026-08-27", "prizes_won": 124531, "median_day": 37136}, "sources": "Couche-Tard MCP · sql/kpi/02, 04, 05, 07, 13, 14, 15 et requêtes de vérification du 2026-10-05"}, "harvest-ctrpp": {"project": "RPP Revamp", "code": "CTRPP", "harvest_project_id": 47683601, "client": "Couche-Tard", "fixed_fee": true, "budget_hours": 1681.4, "planned_start": "2026-04-01", "planned_end": "2026-07-12", "over_budget_alert_pct": 95, "over_budget_alert_date": "2026-10-02", "entries": 919, "total_hours": 1980.9, "billable_hours": 1960.9, "people": 15, "first_entry": "2026-03-26", "last_entry": "2026-09-23", "entries_with_notes": 553, "entries_linked_to_jira": 0, "by_task": {"Developpement": 1304.3, "Gestion de projet": 388.0, "Design UIUX Frontend": 185.7, "QA": 36.2, "Design UIUX CMS": 25.5, "Conception": 21.2, "Onboarding": 20.0}, "by_month": {"2026-03": 5.0, "2026-04": 156.2, "2026-05": 303.1, "2026-06": 539.0, "2026-07": 741.2, "2026-08": 214.1, "2026-09": 22.2}, "by_week": {"2026-03-23": 0.5, "2026-03-30": 12.5, "2026-04-06": 28.2, "2026-04-13": 55.0, "2026-04-20": 37.0, "2026-04-27": 28.0, "2026-05-04": 40.2, "2026-05-11": 79.5, "2026-05-18": 93.3, "2026-05-25": 90.0, "2026-06-01": 91.8, "2026-06-08": 145.2, "2026-06-15": 134.5, "2026-06-22": 120.0, "2026-06-29": 88.8, "2026-07-06": 165.2, "2026-07-13": 239.5, "2026-07-20": 183.2, "2026-07-27": 112.0, "2026-08-03": 92.8, "2026-08-10": 44.5, "2026-08-17": 50.8, "2026-08-24": 25.0, "2026-08-31": 3.2, "2026-09-07": 13.2, "2026-09-14": 4.2, "2026-09-21": 2.5}, "source": "Harvest via Composio, HARVEST_LIST_TIME_ENTRIES (project 47683601), team-level aggregates only", "source_as_of": "2026-10-05"}, "jira-rppprev": {"project": "RPPREV", "issues": 340, "types": {"Epic": 17, "Design": 10, "Story": 177, "Sub-task": 33, "Task": 17, "Bug": 86}, "status": {"Done": 311, "In Progress": 7, "To Do": 22}, "with_points": 61, "unassigned": 74, "carried_over": 35, "sprints": [{"name": "Sprint 1", "start": "2026-04-16", "complete": "2026-04-24", "days": 8, "done": 1}, {"name": "Sprint 3", "start": "2026-05-07", "complete": "2026-05-21", "days": 14, "done": 2}, {"name": "Sprint 4", "start": "2026-05-21", "complete": "2026-06-05", "days": 15, "done": 12}, {"name": "Sprint 5", "start": "2026-06-05", "complete": "2026-07-21", "days": 46, "done": 160}, {"name": "sprint 6", "start": "2026-07-21", "complete": "2026-08-04", "days": 14, "done": 44}, {"name": "sprint 7", "start": "2026-08-04", "complete": "2026-08-11", "days": 7, "done": 26}, {"name": "Sprint 8", "start": "2026-08-11", "complete": "2026-09-17", "days": 37, "done": 29}], "bugs_by_month": {"2026-06": 10, "2026-07": 63, "2026-08": 13}, "weekly": {"done": {"2026-05-11": 1, "2026-05-18": 1, "2026-05-25": 1, "2026-06-01": 12, "2026-06-15": 13, "2026-06-22": 6, "2026-06-29": 3, "2026-07-13": 6, "2026-07-20": 160, "2026-07-27": 24, "2026-08-03": 18, "2026-08-10": 19, "2026-08-17": 3, "2026-08-24": 13, "2026-08-31": 2, "2026-09-14": 5}, "created": {"2026-04-06": 36, "2026-04-20": 11, "2026-04-27": 12, "2026-05-04": 8, "2026-05-11": 33, "2026-05-18": 15, "2026-05-25": 5, "2026-06-01": 7, "2026-06-08": 6, "2026-06-15": 17, "2026-06-22": 14, "2026-06-29": 4, "2026-07-06": 23, "2026-07-13": 28, "2026-07-20": 66, "2026-07-27": 20, "2026-08-03": 7, "2026-08-10": 9, "2026-08-17": 7, "2026-08-24": 7, "2026-08-31": 1, "2026-09-07": 3, "2026-09-21": 1}, "bugs": {"2026-06-15": 1, "2026-06-22": 7, "2026-06-29": 2, "2026-07-06": 4, "2026-07-13": 7, "2026-07-20": 43, "2026-07-27": 9, "2026-08-03": 2, "2026-08-10": 2, "2026-08-17": 3, "2026-08-24": 6}}, "open_epics": 5, "first_created": "2026-04-07", "source_as_of": "2026-10-05", "bulk_close": {"date": "2026-07-21", "tickets": 124, "window_minutes": 3, "same_day": 140, "note": "124 tickets résolus entre 15 h 22 et 15 h 24 UTC le 2026-07-21 (fermeture du sprint 5)"}}}</script>
+<script>
+(() => {
+  'use strict';
+  const DATA = JSON.parse(document.getElementById('retro-data').textContent);
+  const H = DATA['harvest-ctrpp'];
+  const J = DATA['jira-rppprev'];
+  const C = DATA['campagne-rpp-2026'];
+
+  // ---------------------------------------------------------------------------
+  // Formatting and DOM helpers
+  // ---------------------------------------------------------------------------
+  const nf = new Intl.NumberFormat('fr-CA', { maximumFractionDigits: 0 });
+  const nf1 = new Intl.NumberFormat('fr-CA', { maximumFractionDigits: 1, minimumFractionDigits: 1 });
+  const pct0 = (v) => `${nf.format(v * 100)} %`;
+  const pct1 = (v) => `${nf1.format(v * 100)} %`;
+  const dayFmt = new Intl.DateTimeFormat('fr-CA', { day: 'numeric', month: 'long', timeZone: 'UTC' });
+  const dayShort = new Intl.DateTimeFormat('fr-CA', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+  const fd = (iso) => dayFmt.format(new Date(`${iso}T00:00:00Z`));
+  const fds = (iso) => dayShort.format(new Date(`${iso}T00:00:00Z`));
+  const $ = (id) => document.getElementById(id);
+  function el(tag, attrs = {}, ...kids) {
+    const n = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (v == null || v === false) continue;
+      if (k === 'class') n.className = v;
+      else if (k === 'html') n.innerHTML = v;
+      else if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v === true ? '' : v);
+    }
+    for (const c of kids.flat(Infinity)) if (c != null && c !== false) n.append(c instanceof Node ? c : document.createTextNode(String(c)));
+    return n;
+  }
+  const NS = 'http://www.w3.org/2000/svg';
+  function svg(tag, attrs = {}, ...kids) {
+    const n = document.createElementNS(NS, tag);
+    for (const [k, v] of Object.entries(attrs)) if (v != null) n.setAttribute(k, v);
+    for (const c of kids.flat(Infinity)) if (c != null) n.append(c instanceof Node ? c : document.createTextNode(String(c)));
+    return n;
+  }
+  function toast(msg) { const t = $('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => { t.hidden = true; }, 2600); }
+
+  // ---------------------------------------------------------------------------
+  // Derived facts (all from the data files, nothing typed by hand)
+  // ---------------------------------------------------------------------------
+  const weeks = Object.entries(H.by_week).sort((a, b) => (a[0] < b[0] ? -1 : 1));
+  const after = (iso) => weeks.filter(([w]) => w > iso).reduce((a, [, h]) => a + h, 0);
+  const hoursAfterEnd = after(H.planned_end);
+  const peakWeek = weeks.reduce((m, w) => (w[1] > m[1] ? w : m), weeks[0]);
+  const juneWeeks = weeks.filter(([w]) => w >= '2026-06-01' && w < '2026-07-01');
+  const juneAvg = juneWeeks.reduce((a, [, h]) => a + h, 0) / juneWeeks.length;
+  const taskTotal = Object.values(H.by_task).reduce((a, v) => a + v, 0);
+  const share = (k) => (H.by_task[k] || 0) / taskTotal;
+  const designShare = share('Design UIUX Frontend') + share('Design UIUX CMS');
+  const bugs = J.types.Bug || 0;
+  const julyBugs = J.bugs_by_month['2026-07'] || 0;
+  const done = J.status.Done || 0;
+  const s5 = J.sprints.find((s) => /5/.test(s.name));
+  const s8 = J.sprints.find((s) => /8/.test(s.name));
+  const perStore = Object.fromEntries(Object.keys(C.stores_by_region).map((r) => [r, C.unique_players_by_region[r] / C.stores_by_region[r]]));
+  const REG = { ATL: 'Atlantique', QC: 'Québec', CC: 'Centre', WC: 'Ouest' };
+  const hourPeak = C.games_by_hour.indexOf(Math.max(...C.games_by_hour));
+  // First week whose cumulative hours exceed the budget.
+  let cum = 0;
+  const overWeek = (weeks.find(([, h]) => (cum += h) > H.budget_hours) || [null])[0];
+
+  // ---------------------------------------------------------------------------
+  // Small inline charts (SVG, theme colors through CSS variables)
+  // ---------------------------------------------------------------------------
+  function hoursChart(story) {
+    const W = 420; const Hh = 120; const max = Math.max(...weeks.map((w) => w[1]));
+    const bw = W / weeks.length;
+    const fill = story ? 'currentColor' : 'var(--chart)';
+    const xOf = (iso) => { const i = weeks.findIndex(([w]) => w > iso) - 1; return Math.max(0, i) * bw + bw / 2; };
+    const g = svg('svg', { viewBox: `0 -14 ${W} ${Hh + 30}`, role: 'img', 'aria-label': 'Heures saisies par semaine' },
+      weeks.map(([w, h], i) => svg('rect', { x: i * bw + 1, y: Hh - (h / max) * Hh, width: bw - 2, height: Math.max(1, (h / max) * Hh), rx: 2, style: `fill:${fill};opacity:${w > H.planned_end ? 0.45 : 0.95}` })),
+      [[H.planned_end, 'Fin prévue'], [C.play_start, 'Lancement']].map(([d, l], k) => [
+        svg('line', { x1: xOf(d), x2: xOf(d), y1: -6 + k * 12, y2: Hh, style: `stroke:${story ? 'currentColor' : 'var(--mark)'};stroke-width:1;stroke-dasharray:3 3` }),
+        svg('text', { x: xOf(d) + (k ? 4 : -4), y: -8 + k * 12, 'text-anchor': k ? 'start' : 'end', class: 'lab' }, l),
+      ]),
+      svg('text', { x: 0, y: Hh + 16 }, fds(weeks[0][0])),
+      svg('text', { x: W, y: Hh + 16, 'text-anchor': 'end' }, fds(weeks[weeks.length - 1][0])));
+    return el('div', { class: 'viz' }, g);
+  }
+  function hbars(rows, { story, fmt, highlight } = {}) {
+    const W = 420; const rowH = 22; const labW = 96; const max = Math.max(...rows.map((r) => r.v));
+    const g = svg('svg', { viewBox: `0 0 ${W} ${rows.length * rowH}`, role: 'img' },
+      rows.map((r, i) => [
+        svg('text', { x: 0, y: i * rowH + 14, class: 'lab' }, r.label),
+        svg('rect', { x: labW, y: i * rowH + 4, width: Math.max(2, ((W - labW - 64) * r.v) / max), height: 12, rx: 6, style: `fill:${story ? 'currentColor' : 'var(--chart)'};opacity:${highlight && highlight !== r.key ? 0.4 : 1}` }),
+        svg('text', { x: W, y: i * rowH + 14, 'text-anchor': 'end', class: 'val' }, fmt(r.v)),
+      ]));
+    return el('div', { class: 'viz' }, g);
+  }
+  function stackBar(story) {
+    const parts = [['Développement', share('Developpement')], ['Gestion', share('Gestion de projet')], ['Design', designShare], ['QA', share('QA')], ['Autres', share('Conception') + share('Onboarding')]];
+    const W = 420; let x = 0;
+    const op = [1, 0.7, 0.5, 0.95, 0.3];
+    const g = svg('svg', { viewBox: `0 0 ${W} 54`, role: 'img', 'aria-label': 'Répartition des heures' },
+      parts.map(([l, v], i) => { const w = W * v; const r = svg('rect', { x, y: 0, width: Math.max(1, w - 2), height: 18, rx: 3, style: `fill:${i === 3 ? (story ? 'currentColor' : 'var(--projet)') : (story ? 'currentColor' : 'var(--chart)')};opacity:${op[i]}` }); x += w; return r; }),
+      (() => { let xx = 0; return parts.map(([l, v], i) => { const t = svg('text', { x: Math.min(xx, W - 60), y: 34 + (i % 2) * 14, class: 'lab' }, `${l} ${pct0(v)}`); xx += W * v; return t; }); })());
+    return el('div', { class: 'viz' }, g);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Findings: number -> what it means -> proposal (proposals are suggestions)
+  // ---------------------------------------------------------------------------
+  const F = [
+    { id: 'budget', sec: 'projet', k: 'Budget', big: `+${pct0(H.total_hours / H.budget_hours - 1)}`, unit: "d'heures au-delà du budget",
+      mean: `<b>${nf.format(H.total_hours)} h</b> saisies pour <b>${nf.format(H.budget_hours)} h</b> prévues au forfait, soit ${nf.format(H.total_hours - H.budget_hours)} h de plus. Le budget a été dépassé <b>la semaine du ${fd(overWeek)}</b>. L'alerte Harvest est réglée à ${H.over_budget_alert_pct} % (dernière notification : ${fd(H.over_budget_alert_date)}).`,
+      prop: 'Régler les alertes Harvest à 70 % et 90 %, et revoir le budget chaque semaine pendant le développement.', src: 'Harvest · projet CTRPP' },
+    { id: 'calendar', sec: 'projet', k: 'Calendrier', big: `${nf.format(hoursAfterEnd)} h`, unit: 'après la date de fin prévue',
+      mean: `La fin était prévue le <b>${fd(H.planned_end)}</b>. Le lancement a eu lieu le ${fd(C.play_start)}, et <b>${pct0(hoursAfterEnd / H.total_hours)} des heures</b> ont été faites après la date de fin prévue.`,
+      prop: 'Budgéter explicitement la période de campagne en cours (support, correctifs, suivi) au lieu de la traiter comme un dépassement.', src: 'Harvest · heures par semaine', viz: hoursChart },
+    { id: 'rush', sec: 'projet', k: 'Rush de lancement', big: `${nf.format(peakWeek[1])} h`, unit: `la semaine du ${fd(peakWeek[0])}`,
+      mean: `C'est <b>${nf1.format(peakWeek[1] / juneAvg)} fois</b> la moyenne de juin (${nf.format(juneAvg)} h par semaine). Le ${s5.name.toLowerCase()} a duré <b>${s5.days} jours</b> au lieu de 14 et s'est fermé le jour du lancement.`,
+      prop: 'Geler les fonctionnalités 2 semaines avant le lancement, et garder des sprints de durée fixe.', src: 'Harvest · Jira RPPREV' },
+    { id: 'quality', sec: 'projet', k: 'Qualité', big: pct1(share('QA')), unit: 'des heures en QA',
+      mean: `${nf.format(H.by_task.QA)} h de QA sur ${nf.format(taskTotal)} h, pour <b>${bugs} bogues</b>, dont <b>${julyBugs} (${pct0(julyBugs / bugs)})</b> ouverts en juillet, le mois du lancement.`,
+      prop: 'Prévoir la QA dès juin (10 à 15 % des heures de développement) et un sprint de stabilisation avant le lancement.', src: 'Harvest · Jira RPPREV' },
+    { id: 'split', sec: 'projet', k: 'Où sont allées les heures', big: pct0(share('Developpement')), unit: 'en développement',
+      mean: `Gestion de projet <b>${pct0(share('Gestion de projet'))}</b>, design <b>${pct0(designShare)}</b>, QA <b>${pct1(share('QA'))}</b>. ${H.people} personnes ont saisi du temps sur le projet.`,
+      prop: 'Utiliser cette répartition réelle comme base d’estimation pour la prochaine édition (31DOCK).', src: 'Harvest · heures par tâche', viz: stackBar },
+    { id: 'velocity', sec: 'projet', k: "Vélocité de l'équipe", big: `${nf1.format(H.total_hours / done)} h`, unit: 'par ticket terminé, en moyenne',
+      mean: `${done} tickets terminés en ${J.sprints.length} sprints. Mais <b>${J.bulk_close.tickets} tickets ont été fermés en ${J.bulk_close.window_minutes} minutes le ${fd(J.bulk_close.date)}</b>, et seuls <b>${pct0(J.with_points / J.issues)} des tickets</b> ont des points : la vélocité réelle par sprint n'est pas mesurable de façon fiable.`,
+      prop: `Estimer tous les tickets, les fermer au fil de l'eau, et tenir des sprints de 2 semaines (le ${s5.name.toLowerCase()} a duré ${s5.days} jours, le ${s8.name.toLowerCase()} ${s8.days}).`, src: 'Jira RPPREV · Harvest',
+      viz: (story) => hbars(J.sprints.map((s) => ({ key: s.name, label: s.name.replace(/^sprint/i, 'Sprint'), v: s.done / (s.days / 7) })), { story, fmt: (v) => `${nf1.format(v)} / sem.` }) },
+    { id: 'trace', sec: 'projet', k: 'Traçabilité', big: '0', unit: 'heure reliée à un ticket Jira',
+      mean: `Aucune des ${nf.format(H.entries)} saisies Harvest ne pointe vers un ticket, et <b>${pct0(J.unassigned / J.issues)} des tickets</b> n'ont pas de responsable. Impossible de savoir combien a coûté chaque fonctionnalité.`,
+      prop: "Activer l'intégration Harvest–Jira et rendre le responsable obligatoire sur chaque ticket.", src: 'Harvest · Jira RPPREV' },
+
+    { id: 'atlantic', sec: 'campagne', k: 'Pénétration régionale', big: nf.format(perStore.ATL), unit: 'joueurs par magasin en Atlantique',
+      mean: `Contre <b>${nf.format(perStore.QC)}</b> au Québec, ${nf.format(perStore.WC)} dans l'Ouest et ${nf.format(perStore.CC)} au Centre. L'Atlantique a ${pct0(C.stores_by_region.ATL / Object.values(C.stores_by_region).reduce((a, v) => a + v, 0))} des magasins, mais ${pct0(C.unique_players_by_region.ATL / Object.values(C.unique_players_by_region).reduce((a, v) => a + v, 0))} des joueurs.`,
+      prop: 'Activation ciblée en Atlantique (média local, promotion en magasin) : c’est le plus gros potentiel de croissance.', src: `MCP Couche-Tard · ${C.stores_note}`,
+      viz: (story) => hbars(Object.keys(REG).map((r) => ({ key: r, label: REG[r], v: perStore[r] })).sort((a, b) => b.v - a.v), { story, fmt: (v) => nf.format(v), highlight: 'ATL' }) },
+    { id: 'inventory', sec: 'campagne', k: 'Inventaire de prix', big: pct0(C.prize_remaining / C.prize_inventory), unit: 'des prix jamais distribués',
+      mean: `<b>${nf.format(C.prize_remaining)}</b> prix sur ${nf.format(C.prize_inventory)}. <b>${C.partners_under_plan} partenaires sur ${C.partners_total}</b> sont restés sous le plan de distribution.`,
+      prop: "Réduire l'inventaire initial et le réallouer entre partenaires en cours de campagne.", src: 'MCP Couche-Tard · sql/kpi/04' },
+    { id: 'redeem', sec: 'campagne', k: 'Échange en magasin', big: pct0(C.funnel.redeemed_prize / C.funnel.won_prize), unit: 'des gagnants échangent leur prix',
+      mean: `<b>${nf.format(C.funnel.redeemed_prize)}</b> joueurs ont échangé au moins un prix, sur ${nf.format(C.funnel.won_prize)} gagnants. Chaque prix non échangé est une visite en magasin qui n'a pas eu lieu.`,
+      prop: "Rappel avant l'expiration du prix et délai d'échange plus long.", src: 'MCP Couche-Tard · sql/kpi/13' },
+    { id: 'gifts', sec: 'campagne', k: 'Prix offerts à un ami', big: pct0(C.gifts.expired / C.gifts.sent), unit: 'expirent sans être réclamés',
+      mean: `<b>${nf.format(C.gifts.expired)}</b> des ${nf.format(C.gifts.sent)} prix offerts à un ami n'ont jamais été réclamés.`,
+      prop: "Rappel automatique à l'ami, ou réclamation possible sans créer de compte.", src: 'MCP Couche-Tard · sql/kpi/15' },
+    { id: 'retention', sec: 'campagne', k: 'Rétention', big: pct0(C.retention_d30.launch_week), unit: 'des joueurs du lancement rejouent 30 jours après',
+      mean: `Contre <b>${pct0(C.retention_d30.late_week)}</b> pour ceux arrivés la semaine du ${C.retention_d30.late_week_label}. Les joueurs du lancement sont deux fois plus fidèles.`,
+      prop: 'Concentrer l’acquisition sur le lancement et relancer plus tôt les joueurs arrivés en cours de route.', src: 'MCP Couche-Tard · sql/kpi/14' },
+    { id: 'checkout', sec: 'campagne', k: 'Lien avec les ventes', big: pct1(C.checkout_action.share), unit: 'des joueurs ont donné leur numéro à la caisse',
+      mean: `${nf.format(C.checkout_action.players)} joueurs. C'est l'action qui relie le jeu aux ventes LIFT : tant qu'elle reste marginale, l'impact sur les ventes reste invisible.`,
+      prop: 'Rendre l’action caisse plus visible et mieux récompensée.', src: 'MCP Couche-Tard · sql/kpi/07' },
+    { id: 'hours', sec: 'campagne', k: 'Quand ils jouent', big: hourPeak === 0 ? 'Minuit' : `${hourPeak} h`, unit: "l'heure la plus jouée",
+      mean: `<b>${nf.format(C.games_by_hour[hourPeak])}</b> parties entre minuit et 1 h (heure de l'Est), puis un plateau de 7 h à 10 h.`,
+      prop: 'Envoyer les notifications vers 7 h, et prévoir la charge serveur pour minuit.', src: 'MCP Couche-Tard · sql/kpi/16',
+      viz: (story) => { const W = 420; const Hh = 60; const m = Math.max(...C.games_by_hour); const bw = W / 24;
+        return el('div', { class: 'viz' }, svg('svg', { viewBox: `0 0 ${W} ${Hh + 16}`, role: 'img', 'aria-label': 'Parties par heure' },
+          C.games_by_hour.map((v, h) => svg('rect', { x: h * bw + 1, y: Hh - (v / m) * Hh, width: bw - 2, height: (v / m) * Hh, rx: 2, style: `fill:${story ? 'currentColor' : 'var(--chart)'};opacity:${h === hourPeak ? 1 : 0.55}` })),
+          [0, 6, 12, 18, 23].map((h) => svg('text', { x: h * bw + bw / 2, y: Hh + 13, 'text-anchor': 'middle' }, `${h} h`)))); } },
+    { id: 'spike', sec: 'campagne', k: 'Anomalie à expliquer', big: `×${nf1.format(C.spike.prizes_won / C.spike.median_day)}`, unit: `prix gagnés le ${fd(C.spike.day)}`,
+      mean: `<b>${nf.format(C.spike.prizes_won)}</b> prix gagnés ce jour-là, contre ${nf.format(C.spike.median_day)} un jour normal.`,
+      prop: 'Identifier la cause (événement, configuration ou bogue) avant la prochaine édition.', src: 'MCP Couche-Tard · sql/kpi/05' },
+  ];
+  const SEC = { projet: 'Le projet', campagne: 'La campagne' };
+
+  // ---------------------------------------------------------------------------
+  // Document view
+  // ---------------------------------------------------------------------------
+  $('lede').textContent = `${F.length} constats tirés de Jira, Harvest et des données du jeu. Pour chacun : le chiffre, ce qu'il veut dire, et notre proposition pour la prochaine édition.`;
+  $('sources').append(
+    el('span', {}, el('b', {}, 'Jira '), `${J.project} · ${J.issues} tickets`),
+    el('span', {}, el('b', {}, 'Harvest '), `${H.code} · ${nf.format(H.total_hours)} h, ${H.entries} saisies`),
+    el('span', {}, el('b', {}, 'Jeu '), `${C.campaign} · MCP Couche-Tard`),
+    el('span', {}, `Données au ${fd(C.source_as_of)} 2026`));
+  for (const sec of ['projet', 'campagne']) {
+    $(`cards-${sec}`).replaceChildren(...F.filter((f) => f.sec === sec).map((f) => el('article', { class: 'card', id: `f-${f.id}` },
+      el('div', { class: 'c-num' }, el('span', { class: 'k' }, f.k), el('span', { class: 'big' }, f.big), el('span', { class: 'unit' }, f.unit)),
+      el('div', { class: 'c-mean' }, el('p', { html: f.mean }), f.viz ? f.viz(false) : null, el('p', { class: 'src' }, `Source : ${f.src}`)),
+      el('div', { class: 'c-prop' }, el('span', { class: 'lbl' }, 'Proposition'), el('p', {}, f.prop)))));
+  }
+  $('foot').textContent = "Document interne. Chiffres d'équipe uniquement (aucune donnée par personne). Les propositions sont des recommandations à valider en rétro.";
+
+  // ---------------------------------------------------------------------------
+  // Shared action plan (db): plan/rpp-2026 = { items: { <id>: { status } } }
+  // ---------------------------------------------------------------------------
+  const STATUS = [['discuter', 'À discuter'], ['retenue', 'Retenue'], ['ecartee', 'Écartée']];
+  const plan = { items: {}, db: null, canWrite: false, saving: false };
+  const statusOf = (id) => plan.items[id]?.status || 'discuter';
+  function renderPlan() {
+    const counts = Object.fromEntries(STATUS.map(([v]) => [v, F.filter((f) => statusOf(f.id) === v).length]));
+    $('plan-count').replaceChildren(...STATUS.map(([v, l]) => el('span', {}, el('b', {}, counts[v]), l.toLowerCase())));
+    $('plan-list').replaceChildren(...F.map((f, i) => el('li', { class: statusOf(f.id) },
+      el('span', { class: 'n' }, String(i + 1).padStart(2, '0')),
+      el('div', { class: 't' }, f.prop, el('small', {}, `${SEC[f.sec]} · ${f.k} · `, el('a', { href: `#f-${f.id}` }, 'voir le constat'))),
+      el('div', { class: 'status', role: 'group', 'aria-label': `Statut : ${f.k}`, 'aria-disabled': plan.canWrite ? null : 'true' },
+        STATUS.map(([v, l]) => el('button', { type: 'button', 'data-v': v, 'aria-pressed': String(statusOf(f.id) === v), disabled: !plan.canWrite, onclick: () => setStatus(f.id, v) }, l))))));
+    $('plan-sub').textContent = plan.db
+      ? (plan.canWrite ? "Statut partagé avec l'équipe : changez-le pendant la rétro." : 'Statut partagé avec l’équipe (lecture seule pour vous).')
+      : 'Ouvrez cette page dans claude.ai pour partager les statuts avec l’équipe.';
+  }
+  async function setStatus(id, v) {
+    if (!plan.canWrite || statusOf(id) === v) return;
+    plan.items = { ...plan.items, [id]: { status: v } };
+    renderPlan();
+    if (!plan.db) return;
+    try { await plan.db.doc('plan/rpp-2026').set({ items: plan.items }); }
+    catch (e) { if (e?.code === 'invalid_argument') { plan.canWrite = false; renderPlan(); } toast("Le statut n'a pas pu être enregistré."); }
+  }
+  function planMarkdown() {
+    const lines = ['# Plan d’action — prochaine édition (tiré de RPP 2026)', ''];
+    for (const [v, l] of STATUS) {
+      const items = F.filter((f) => statusOf(f.id) === v);
+      if (!items.length) continue;
+      lines.push(`## ${l} (${items.length})`, '');
+      for (const f of items) lines.push(`- [ ] ${f.prop}`, `  - Constat : ${f.big} ${f.unit} (${f.src})`);
+      lines.push('');
+    }
+    return lines.join('\n');
+  }
+  $('btn-copy').addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(planMarkdown()); toast('Plan copié en Markdown.'); }
+    catch (e) { toast('Copie impossible ici : utilisez Télécharger.'); }
+  });
+  let downloads = null;
+  $('btn-md').addEventListener('click', async () => {
+    try { await downloads.save({ filename: 'plan-action-rpp-2026.md', data: planMarkdown() }); }
+    catch (e) { if (e?.code !== 'declined') toast("Le fichier n'a pas pu être préparé."); }
+  });
+
+  // ---------------------------------------------------------------------------
+  // Story mode
+  // ---------------------------------------------------------------------------
+  const PAL = {
+    projet: [{ bg: '#14161c', ink: '#fbfaf7', acc: '#2a2116' }, { bg: '#ff6a2b', ink: '#14161c', acc: '#ff8a55', light: true }],
+    campagne: [{ bg: '#2648f0', ink: '#fbfaf7', acc: '#3d5ff5' }, { bg: '#ffc93c', ink: '#14161c', acc: '#ffd970', light: true }],
+  };
+  const MOTIFS = ['disc', 'ring', 'stripes'];
+  const screens = [
+    { intro: true, bg: '#14161c', ink: '#fbfaf7', acc: '#ff6a2b' },
+    ...F.map((f, i) => ({ f, ...PAL[f.sec][i % 2], motif: MOTIFS[i % 3] })),
+    { outro: true, bg: '#0f8a5f', ink: '#fbfaf7', acc: '#139e6d' },
+  ];
+  const STORY_MS = 9000;
+  const st = { i: 0, paused: false, t0: 0, elapsed: 0, raf: 0, last: null };
+  const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function screenNode(s, i) {
+    const n = el('section', { class: `scr${s.light ? ' light' : ''}`, style: `--s-bg:${s.bg};--s-ink:${s.ink};--s-acc:${s.acc}`, 'aria-label': `Écran ${i + 1} sur ${screens.length}` },
+      el('div', { class: `motif ${s.motif || 'disc'}` }));
+    if (s.intro) {
+      n.append(el('div', { class: 'sect rise' }, 'Bilan interne'), el('div', { class: 'big rise d1', style: 'font-size:clamp(46px,13vw,64px)' }, 'Ce que RPP 2026 nous apprend'),
+        el('p', { class: 'mean rise d2' }, `${F.length} constats : ${F.filter((f) => f.sec === 'projet').length} sur le projet, ${F.filter((f) => f.sec === 'campagne').length} sur la campagne. Pour chacun, une proposition pour la prochaine édition.`));
+    } else if (s.outro) {
+      const ret = F.filter((f) => statusOf(f.id) === 'retenue').length;
+      n.append(el('div', { class: 'sect rise' }, "Plan d'action"), el('div', { class: 'big rise d1' }, String(F.length)), el('div', { class: 'unit rise d1' }, 'propositions à trancher en rétro'),
+        el('p', { class: 'mean rise d2' }, ret ? `${ret} déjà retenue${ret > 1 ? 's' : ''}.` : 'Aucune n’est encore retenue.'),
+        el('div', { class: 'cta rise d3' }, el('button', { type: 'button', onclick: (e) => { e.stopPropagation(); closeStory(); location.hash = 'plan'; } }, 'Ouvrir le plan')));
+    } else {
+      const f = s.f;
+      n.append(el('div', { class: 'sect rise' }, `${SEC[f.sec]} · ${f.k}`), el('div', { class: 'big rise d1' }, f.big), el('div', { class: 'unit rise d1' }, f.unit),
+        f.viz ? el('div', { class: 'rise d2' }, f.viz(true)) : null,
+        el('p', { class: 'mean rise d2', html: f.mean }),
+        el('p', { class: 'prop rise d3' }, el('b', {}, 'Proposition'), f.prop));
+    }
+    return n;
+  }
+  function show(i) {
+    st.i = Math.max(0, Math.min(screens.length - 1, i));
+    const s = screens[st.i];
+    $('stage').replaceChildren(screenNode(s, st.i));
+    $('frame').classList.toggle('light', !!s.light);
+    $('frame').style.color = s.ink;
+    $('progress').replaceChildren(...screens.map((_, j) => el('span', {}, el('i', { style: `width:${j < st.i ? 100 : 0}%` }))));
+    st.elapsed = 0; st.t0 = performance.now();
+  }
+  function tick(t) {
+    if ($('story').hidden) return;
+    const bar = $('progress').children[st.i]?.firstChild;
+    const last = st.i === screens.length - 1;
+    if (!st.paused && !reduced() && !last) {
+      const p = Math.min(1, (st.elapsed + t - st.t0) / STORY_MS);
+      if (bar) bar.style.width = `${p * 100}%`;
+      if (p >= 1) show(st.i + 1);
+    } else if (bar && last) bar.style.width = '100%';
+    st.raf = requestAnimationFrame(tick);
+  }
+  function pause(p) {
+    if (p && !st.paused) st.elapsed += performance.now() - st.t0;
+    if (!p && st.paused) st.t0 = performance.now();
+    st.paused = p; $('story-pause').textContent = p ? 'Lecture' : 'Pause';
+  }
+  function openStory() {
+    st.last = document.activeElement;
+    $('story').hidden = false; document.body.style.overflow = 'hidden';
+    pause(reduced()); show(0);
+    cancelAnimationFrame(st.raf); st.raf = requestAnimationFrame(tick);
+    $('story-close').focus();
+  }
+  function closeStory() { $('story').hidden = true; document.body.style.overflow = ''; cancelAnimationFrame(st.raf); st.last?.focus?.(); }
+  $('btn-story').addEventListener('click', openStory);
+  $('story-close').addEventListener('click', closeStory);
+  $('story-pause').addEventListener('click', () => pause(!st.paused));
+  $('story-prev').addEventListener('click', () => show(st.i - 1));
+  $('story-next').addEventListener('click', () => show(st.i + 1));
+  document.addEventListener('keydown', (e) => {
+    if ($('story').hidden) return;
+    if (e.key === 'Escape') closeStory();
+    else if (e.key === 'ArrowRight') show(st.i + 1);
+    else if (e.key === 'ArrowLeft') show(st.i - 1);
+  });
+  let tx = null;
+  $('frame').addEventListener('touchstart', (e) => { tx = e.touches[0].clientX; }, { passive: true });
+  $('frame').addEventListener('touchend', (e) => { if (tx == null) return; const dx = e.changedTouches[0].clientX - tx; tx = null; if (Math.abs(dx) > 50) show(st.i + (dx < 0 ? 1 : -1)); });
+
+  // ---------------------------------------------------------------------------
+  // Boot
+  // ---------------------------------------------------------------------------
+  renderPlan();
+  (async () => {
+    const use = (n) => (window.claude?.use ? window.claude.use(n).catch(() => null) : Promise.resolve(null));
+    const [db, user, dl] = await Promise.all([use('db'), use('user'), use('downloads')]);
+    downloads = dl;
+    $('btn-md').hidden = !dl;
+    plan.db = db;
+    if (user) { try { const w = await user.can('data.write'); plan.canWrite = !!db && (w == null ? true : !!w); } catch (e) { plan.canWrite = false; } }
+    if (!db) { plan.canWrite = true; renderPlan(); return; } // local-only fallback: statuses stay in this view
+    db.doc('plan/rpp-2026').onSnapshot((snap) => {
+      if (snap.exists) plan.items = snap.data().items || {};
+      renderPlan();
+    }, () => renderPlan());
+    renderPlan();
+  })();
+})();
+
+</script>
