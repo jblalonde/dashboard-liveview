@@ -47,6 +47,33 @@ The page is organized in tabs, so each view stays short:
 The selected tab is kept in the link (`#prix`, `#audience`…) and in the viewer's browser.
 Every chart has a "Tableau" toggle that shows its data.
 
+## Bilan (Wrapped-style recap)
+
+Once a campaign has ended, a **Voir le bilan** button opens a full-screen story of 13 screens. Each
+screen shows one headline number, from the same snapshot, for the selected BU and banner:
+
+- players and new players
+- games played, with the pace (one game every N seconds)
+- return rate and active days per player
+- the peak day
+- the leading BU
+- prizes won and redeemed, and the most-redeemed partner
+- grand-prize entries
+- the most popular bonus action and referrals
+- ad reach and the top partner
+- download lift vs before launch
+- LIFT sales
+- a summary
+
+Controls:
+- Navigation: tap or click (left side goes back), swipe, or arrow keys.
+- Space pauses; Escape closes.
+- Screens auto-advance every 6.5 s; with reduced motion, there's no auto-advance or count-up.
+- The last screen offers **Télécharger la carte**: a 1080×1350 PNG summary to share.
+- Linking to the page with `#bilan` opens the recap directly.
+
+Screens whose data is missing are skipped.
+
 ## Filters and comparisons
 
 - **Campaign**: from the editions table, or from the seed list until that table exists.

@@ -358,8 +358,12 @@ FROM rctapi_minigame_editions WHERE deleted_at IS NULL ORDER BY start_at DESC`;
       calc: (x) => { const rows = daily(x.res, 'q11', x.rg, x.regions, { allowUnassigned: x.allRegions, redeem: true }); return rows && sum(rows, 'coupon_activations'); },
       spark: () => ({ qid: 'q11', f: (r) => r.coupon_activations, redeem: true }) },
     { id: 'redemption_rate', section: 'prix', label: "Taux d'échange", fmt: 'pct', scope: 'campaign', delta: 'pts', extra: true,
-      note: 'Prix échangés ÷ prix gagnés, sur toute la campagne.',
-      calc: (x) => { const rows = rowsOf(x.res, 'q04'); if (!rows) return null; const s = regionFilter(rows, x.regions); return ratio(sum(s, 'redeemed'), sum(s, 'won')); } },
+      note: 'Prix échangés en magasin ÷ prix gagnés, sur toute la campagne.',
+      // Same "échangés" source as the tile and daily chart (coupon activations), so the numbers always agree.
+      calc: (x) => {
+        const won = rowsOf(x.res, 'q04'); const act = rowsOf(x.res, 'q11'); if (!won || !act) return null;
+        return ratio(sum(regionFilter(act, x.regions, x.allRegions), 'coupon_activations'), sum(regionFilter(won, x.regions), 'won'));
+      } },
     { id: 'prizes_remaining', section: 'prix', label: 'Prix restants', fmt: 'int', scope: 'stock',
       note: "Inventaire moins les prix distribués. Les coupons non échangés à temps retournent dans l'inventaire.",
       calc: (x) => { const rows = rowsOf(x.res, 'q04'); return rows && sum(regionFilter(rows, x.regions), 'remaining'); } },
@@ -584,6 +588,7 @@ FROM rctapi_minigame_editions WHERE deleted_at IS NULL ORDER BY start_at DESC`;
     } catch (e) { /* storage unavailable */ }
     const hash = (location.hash || '').slice(1);
     if (TABS.includes(hash)) state.tab = hash;
+    if (hash === 'bilan') wrap.autoOpen = true;
   }
 
   // ---------------------------------------------------------------------------
@@ -1192,8 +1197,319 @@ FROM rctapi_minigame_editions WHERE deleted_at IS NULL ORDER BY start_at DESC`;
     renderCharts();
     const anyData = !!state.results[state.campaign];
     $('export-menu').hidden = !(caps.downloads && anyData);
+    $('btn-wrap').hidden = !wrapAvailable();
+    if (wrap.autoOpen && wrapAvailable()) { wrap.autoOpen = false; openWrap(); }
     if (!activeRegions().length) { setPageMsg(NO_REGION_MSG); regionMsgShown = true; }
     else if (regionMsgShown) { setPageMsg(null); regionMsgShown = false; }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Bilan: Wrapped-style recap of the whole campaign for the selected BU/banner.
+  // One headline number per screen, computed from the same snapshot.
+  // ---------------------------------------------------------------------------
+  const WRAP_MS = 6500;
+  const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const wrap = { slides: [], i: 0, paused: false, t0: 0, elapsed: 0, raf: 0, lastFocus: null, autoOpen: false };
+  const W = { blue: '#2648f0', tomato: '#ff5b3a', mint: '#17c48a', sun: '#ffc93c', pink: '#ff9ec4', night: '#10131a', ink: '#0f1115', paper: '#fbfaf7' };
+
+  function wrapAvailable() {
+    const camp = currentCampaign();
+    const res = state.results[camp?.code];
+    if (!isReady(camp) || !res?.q01 || !res?.q02) return false;
+    return todayIn(camp.tz) > camp.end || camp.status === 'closed';
+  }
+
+  // Facts for the recap, over the whole campaign and the selected BUs.
+  function wrapFacts() {
+    const camp = currentCampaign();
+    const res = state.results[camp.code];
+    const regions = activeRegions();
+    const scope = (q) => (res[q] ? regionFilter(res[q].rows, regions) : null);
+    const f = { camp, regions, days: diffDays(camp.start, camp.end) + 1 };
+    const q02 = scope('q02');
+    f.unique = sum(q02, 'unique_players');
+    f.newPlayers = sum(q02, 'new_to_ck_games');
+    f.repeat = ratio(sum(q02, 'repeat_players'), f.unique);
+    f.daysPerPlayer = ratio(sum(q02, 'player_days'), f.unique);
+    const q01 = scope('q01');
+    f.games = sum(q01, 'games_played');
+    f.signups = sum(q01, 'signups');
+    const byDay = new Map();
+    for (const r of q01) byDay.set(r.day, (byDay.get(r.day) || 0) + (r.active_players || 0));
+    const peak = [...byDay.entries()].sort((a, b) => b[1] - a[1])[0];
+    if (peak) { f.peakDay = peak[0]; f.peakPlayers = peak[1]; f.avgDau = [...byDay.values()].reduce((a, v) => a + v, 0) / byDay.size; }
+    f.regionShares = REGION_ORDER.filter((r) => regions.includes(r)).map((r) => ({ r, v: sum(res.q02.rows.filter((x) => x.region_code === r), 'unique_players') }));
+    const q04 = scope('q04');
+    if (q04) {
+      f.won = sum(q04, 'won');
+      f.redeemed = res.q11 ? sum(regionFilter(res.q11.rows, regions, regions.length === REGION_ORDER.length), 'coupon_activations') : sum(q04, 'redeemed');
+      const byP = new Map();
+      for (const r of q04) byP.set(r.partner, (byP.get(r.partner) || 0) + (r.redeemed || 0));
+      const top = [...byP.entries()].filter(([p]) => !/^Bannière/.test(p)).sort((a, b) => b[1] - a[1])[0];
+      if (top) { f.topPrizePartner = top[0]; f.topPrizeRedeemed = top[1]; }
+    }
+    const q06 = scope('q06');
+    if (q06) f.entries = sum(q06, 'entries');
+    const q07 = scope('q07');
+    if (q07) {
+      const byA = new Map();
+      for (const r of q07.filter((x) => x.kind === 'bonus_action')) {
+        const a = byA.get(r.key) || { title: r.title_fr || r.key, players: 0 };
+        a.players += r.players || 0;
+        byA.set(r.key, a);
+      }
+      const top = [...byA.values()].sort((a, b) => b.players - a.players)[0];
+      if (top) { f.topAction = top.title; f.topActionPlayers = top.players; }
+      f.badges = sum(q07.filter((x) => x.kind === 'badge'), 'completions');
+    }
+    const q08 = scope('q08');
+    if (q08) { f.referrals = sum(q08, 'successful_referrals'); f.referrers = sum(q08, 'referrers'); }
+    const q09 = scope('q09');
+    if (q09) {
+      f.impressions = sum(q09, 'impressions');
+      const byP = new Map();
+      for (const r of q09) byP.set(r.partner, (byP.get(r.partner) || 0) + (r.unique_viewers || 0));
+      f.adPartners = byP.size;
+      const top = [...byP.entries()].sort((a, b) => b[1] - a[1])[0];
+      if (top) { f.topAdPartner = top[0]; f.topAdViewers = top[1]; }
+    }
+    if (res.q12) {
+      const rows = res.q12.rows;
+      f.downloads = sum(rows.filter((r) => r.in_campaign === 1), downloadsOf);
+      f.downloadsBefore = sum(rows.filter((r) => r.in_campaign === 0), downloadsOf);
+    }
+    const q10 = scope('q10');
+    if (q10) { f.liftRevenue = sum(q10, 'lift_revenue'); f.liftTx = sum(q10, 'lift_transactions'); }
+    return f;
+  }
+
+  const scopeName = (regions) => {
+    if (regions.length === REGION_ORDER.length) return 'toutes les BU';
+    if (regions.length === 2 && regions.includes('ATL') && regions.includes('QC')) return 'Eastern';
+    return regions.map((r) => REGION_LABEL[r]).join(', ');
+  };
+  const big = (n) => (n >= 1e6 ? { v: n / 1e6, fmt: (x) => nf1.format(x), unit: 'millions' } : { v: n, fmt: (x) => nf.format(x), unit: '' });
+
+  function buildSlides() {
+    const f = wrapFacts();
+    const S = [];
+    const add = (s) => S.push(s);
+    const days = f.days;
+    add({ bg: W.night, ink: W.paper, acc: W.tomato, motif: 'disc', kicker: `${f.camp.name} · ${scopeName(f.regions)}`, title: 'Le bilan', line: `${days} jours de jeu, du ${fmtDayLong(f.camp.start)} au ${fmtDayLong(f.camp.end)}. Voici ce que la campagne a donné.` });
+    if (f.unique) add({ bg: W.blue, ink: W.paper, acc: '#3d5ff5', motif: 'ring', kicker: 'Ils ont joué', num: f.unique, unit: 'joueurs uniques',
+      line: f.newPlayers ? `<b>${FMT.pct0(f.newPlayers / f.unique)}</b> n'avaient jamais joué à un jeu de l'app avant. Ça fait <b>${FMT.int(f.newPlayers)}</b> nouveaux joueurs.` : null });
+    if (f.games) {
+      const secs = (days * 86400) / f.games;
+      const b = big(f.games);
+      add({ bg: W.tomato, ink: W.ink, acc: '#ff7a5e', motif: 'stripes', light: true, kicker: 'Et ils ont joué beaucoup', num: b.v, fmt: b.fmt, unit: b.unit ? `${b.unit} de parties` : 'parties',
+        line: `C'est <b>une partie toutes les ${nf1.format(secs)} secondes</b>, jour et nuit, pendant ${days} jours.` });
+    }
+    if (f.repeat != null) add({ bg: W.mint, ink: W.ink, acc: '#3fd9a3', motif: 'blocks', light: true, kicker: 'Ils sont revenus', num: f.repeat * 100, fmt: (x) => nf.format(x), unit: '% des joueurs',
+      line: `sont revenus jouer au moins un deuxième jour. En moyenne, chaque joueur a joué <b>${nf1.format(f.daysPerPlayer || 0)} jours</b>.` });
+    if (f.peakDay) add({ bg: W.sun, ink: W.ink, acc: '#ffd970', motif: 'arc', light: true, kicker: 'Le jour le plus fort', title: fmtDayLong(f.peakDay).replace(/ \d{4}$/, ''),
+      line: `<b>${FMT.int(f.peakPlayers)}</b> joueurs actifs ce jour-là, contre ${FMT.int(f.avgDau || 0)} en moyenne.` });
+    if (f.regionShares.length > 1) {
+      const total = f.regionShares.reduce((a, x) => a + x.v, 0) || 1;
+      const sorted = [...f.regionShares].sort((a, b) => b.v - a.v);
+      const max = sorted[0].v || 1;
+      add({ bg: W.night, ink: W.paper, acc: '#1b2030', motif: 'disc', kicker: 'La BU en tête', title: REGION_LABEL[sorted[0].r],
+        line: `${FMT.pct0(sorted[0].v / total)} des joueurs uniques.`,
+        bars: sorted.map((x) => ({ label: REGION_LABEL[x.r], pct: x.v / total, w: x.v / max, color: cssVar(REGION_VAR[x.r]) })) });
+    }
+    if (f.won) {
+      const b = big(f.won);
+      add({ bg: W.pink, ink: W.ink, acc: '#ffb8d4', motif: 'ring', light: true, kicker: 'Des prix, beaucoup de prix', num: b.v, fmt: b.fmt, unit: b.unit ? `${b.unit} de prix gagnés` : 'prix gagnés',
+        line: `<b>${FMT.int(f.redeemed)}</b> ont été échangés en magasin, soit <b>${FMT.pct0(f.redeemed / f.won)}</b>.` + (f.topPrizePartner ? ` Le partenaire le plus échangé : <b>${escapeHtml(f.topPrizePartner)}</b>.` : '') });
+    }
+    if (f.entries) {
+      const b = big(f.entries);
+      add({ bg: W.blue, ink: W.paper, acc: '#3d5ff5', motif: 'stripes', kicker: 'En route vers le grand prix', num: b.v, fmt: b.fmt, unit: b.unit ? `${b.unit} de participations` : 'participations',
+        line: f.unique ? `Environ <b>${nf.format(f.entries / f.unique)}</b> participations par joueur.` : null });
+    }
+    if (f.topAction) add({ bg: W.mint, ink: W.ink, acc: '#3fd9a3', motif: 'arc', light: true, kicker: 'Les mécaniques qui ont marché', num: f.topActionPlayers, unit: 'joueurs',
+      line: `ont choisi « ${escapeHtml(f.topAction)} », l'action bonus la plus populaire.` + (f.referrals ? ` Et <b>${FMT.int(f.referrals)}</b> parrainages ont abouti.` : '') });
+    if (f.impressions) {
+      const b = big(f.impressions);
+      add({ bg: W.tomato, ink: W.ink, acc: '#ff7a5e', motif: 'blocks', light: true, kicker: 'Les partenaires ont été vus', num: b.v, fmt: b.fmt, unit: b.unit ? `${b.unit} d'impressions` : 'impressions',
+        line: `pour ${f.adPartners} partenaires.` + (f.topAdPartner ? ` <b>${escapeHtml(f.topAdPartner)}</b> a rejoint le plus de joueurs : ${FMT.int(f.topAdViewers)}.` : '') });
+    }
+    if (f.downloads && f.downloadsBefore) add({ bg: W.sun, ink: W.ink, acc: '#ffd970', motif: 'disc', light: true, kicker: "L'app a décollé", num: f.downloads / f.downloadsBefore, fmt: (x) => `×${nf1.format(x)}`, unit: 'téléchargements',
+      line: `<b>${FMT.int(f.downloads)}</b> téléchargements pendant la campagne, contre ${FMT.int(f.downloadsBefore)} sur la même durée avant le lancement.`, note: 'Toutes BU, toutes provenances.' });
+    if (f.liftRevenue) add({ bg: W.night, ink: W.paper, acc: '#1b2030', motif: 'ring', kicker: 'Jusque dans le panier', num: f.liftRevenue, fmt: (x) => money.format(x), unit: 'de ventes rattachées au jeu',
+      line: `${FMT.int(f.liftTx)} transactions, ${FMT.money2(f.liftRevenue / f.liftTx)} en moyenne.`, note: 'Achats liés au numéro de téléphone saisi à la caisse. Pas le revenu total.' });
+    add({ bg: W.blue, ink: W.paper, acc: '#3d5ff5', motif: 'disc', kicker: `${f.camp.name} en bref`, title: 'Merci !', summary: f });
+    return S;
+  }
+
+  function slideNode(s, idx) {
+    const node = el('section', { class: `slide${s.light ? ' light' : ''}`, style: `--bg-s:${s.bg};--ink-s:${s.ink};--acc-s:${s.acc}`, 'aria-label': `Écran ${idx + 1} sur ${wrap.slides.length}` },
+      el('div', { class: `motif ${s.motif}` }),
+      el('div', { class: 'kicker rise' }, s.kicker));
+    if (s.title) node.append(el('div', { class: `big mid rise d1` }, s.title));
+    if (s.num != null) {
+      const n = el('div', { class: 'big rise d1', 'data-to': String(s.num) }, (s.fmt || ((x) => nf.format(x)))(reducedMotion() ? s.num : 0));
+      node.append(n);
+      if (s.unit) node.append(el('div', { class: 'unit rise d2' }, s.unit));
+    }
+    if (s.line) { const p = el('p', { class: 'line rise d3' }); p.innerHTML = s.line; node.append(p); }
+    if (s.bars) {
+      node.append(el('div', { class: 'bars rise d3' }, s.bars.map((b) => el('div', {}, el('span', {}, b.label), el('s', { style: `width:${Math.max(4, b.w * 100)}%;color:${b.color}` }), el('span', {}, FMT.pct0(b.pct))))));
+    }
+    if (s.summary) {
+      const f = s.summary;
+      const tiles = [
+        [FMT.short(f.unique), 'joueurs uniques'],
+        [FMT.short(f.games), 'parties jouées'],
+        [f.repeat != null ? FMT.pct0(f.repeat) : '—', 'sont revenus'],
+        [f.won ? FMT.short(f.won) : '—', 'prix gagnés'],
+        [f.redeemed ? FMT.short(f.redeemed) : '—', 'prix échangés'],
+        [f.downloads && f.downloadsBefore ? `×${nf1.format(f.downloads / f.downloadsBefore)}` : '—', 'téléchargements vs avant'],
+      ];
+      node.append(el('div', { class: 'tiles-s rise d2' }, tiles.map(([v, l]) => el('div', {}, el('b', {}, v), el('span', {}, l)))));
+      const cta = el('div', { class: 'cta rise d3' },
+        caps.downloads ? el('button', { type: 'button', onclick: (e) => { e.stopPropagation(); saveWrapCard(f); } }, 'Télécharger la carte') : null,
+        el('button', { type: 'button', class: 'ghost', onclick: (e) => { e.stopPropagation(); showSlide(0); } }, 'Revoir'));
+      node.append(cta);
+    }
+    if (s.note) node.append(el('p', { class: 'note rise d3' }, s.note));
+    return node;
+  }
+
+  function countUp(node, s) {
+    const target = Number(node.dataset.to);
+    const fmt = s.fmt || ((x) => nf.format(x));
+    if (reducedMotion()) { node.textContent = fmt(target); return; }
+    const t0 = performance.now();
+    const step = (t) => {
+      const k = Math.min(1, (t - t0) / 1100);
+      const e = 1 - Math.pow(1 - k, 3);
+      node.textContent = fmt(target * e);
+      if (k < 1 && wrap.slides[wrap.i] === s) requestAnimationFrame(step);
+      else node.textContent = fmt(target);
+    };
+    requestAnimationFrame(step);
+  }
+
+  function renderProgress() {
+    $('wrap-progress').replaceChildren(...wrap.slides.map((_, j) => el('span', {}, el('i', { style: `width:${j < wrap.i ? 100 : 0}%` }))));
+  }
+  function showSlide(i) {
+    wrap.i = Math.max(0, Math.min(wrap.slides.length - 1, i));
+    const s = wrap.slides[wrap.i];
+    const node = slideNode(s, wrap.i);
+    $('wrap-stage').replaceChildren(node);
+    $('wrap-frame').classList.toggle('light', !!s.light);
+    $('wrap-frame').style.color = s.ink;
+    const n = node.querySelector('[data-to]');
+    if (n) countUp(n, s);
+    renderProgress();
+    wrap.elapsed = 0;
+    wrap.t0 = performance.now();
+  }
+  function tick(t) {
+    if ($('wrap').hidden) return;
+    const bar = $('wrap-progress').children[wrap.i]?.firstChild;
+    const last = wrap.i === wrap.slides.length - 1;
+    if (!wrap.paused && !reducedMotion() && !last) {
+      const p = Math.min(1, (wrap.elapsed + (t - wrap.t0)) / WRAP_MS);
+      if (bar) bar.style.width = `${p * 100}%`;
+      if (p >= 1) showSlide(wrap.i + 1);
+    } else if (bar && last) bar.style.width = '100%';
+    wrap.raf = requestAnimationFrame(tick);
+  }
+  function setPaused(p) {
+    if (p && !wrap.paused) wrap.elapsed += performance.now() - wrap.t0;
+    if (!p && wrap.paused) wrap.t0 = performance.now();
+    wrap.paused = p;
+    $('wrap-pause').textContent = p ? 'Lecture' : 'Pause';
+    $('wrap-pause').setAttribute('aria-label', p ? 'Reprendre la lecture' : 'Mettre en pause');
+  }
+  function openWrap() {
+    if (!wrapAvailable()) return;
+    wrap.slides = buildSlides();
+    wrap.lastFocus = document.activeElement;
+    $('wrap-brand').textContent = `Bilan · ${currentCampaign().name}`;
+    $('wrap').hidden = false;
+    document.body.style.overflow = 'hidden';
+    setPaused(reducedMotion());
+    showSlide(0);
+    cancelAnimationFrame(wrap.raf);
+    wrap.raf = requestAnimationFrame(tick);
+    $('wrap-close').focus();
+    try { history.replaceState(null, '', '#bilan'); } catch (e) { /* sandboxed */ }
+  }
+  function closeWrap() {
+    $('wrap').hidden = true;
+    document.body.style.overflow = '';
+    cancelAnimationFrame(wrap.raf);
+    try { history.replaceState(null, '', `#${state.tab}`); } catch (e) { /* sandboxed */ }
+    wrap.lastFocus?.focus?.();
+  }
+  $('btn-wrap').addEventListener('click', openWrap);
+  $('wrap-close').addEventListener('click', closeWrap);
+  $('wrap-pause').addEventListener('click', () => setPaused(!wrap.paused));
+  $('wrap-prev').addEventListener('click', () => showSlide(wrap.i - 1));
+  $('wrap-next').addEventListener('click', () => showSlide(wrap.i + 1));
+  document.addEventListener('keydown', (e) => {
+    if ($('wrap').hidden) return;
+    if (e.key === 'Escape') closeWrap();
+    else if (e.key === 'ArrowRight') showSlide(wrap.i + 1);
+    else if (e.key === 'ArrowLeft') showSlide(wrap.i - 1);
+    else if (e.key === ' ' && e.target === document.body) { e.preventDefault(); setPaused(!wrap.paused); }
+  });
+  // Swipe on touch screens
+  let touchX = null;
+  $('wrap-frame').addEventListener('touchstart', (e) => { touchX = e.touches[0].clientX; }, { passive: true });
+  $('wrap-frame').addEventListener('touchend', (e) => {
+    if (touchX == null) return;
+    const dx = e.changedTouches[0].clientX - touchX;
+    touchX = null;
+    if (Math.abs(dx) > 50) showSlide(wrap.i + (dx < 0 ? 1 : -1));
+  });
+
+  // Shareable PNG card (1080 x 1350) drawn on a canvas.
+  async function saveWrapCard(f) {
+    try { await document.fonts.load('800 80px "Bricolage Grotesque"'); await document.fonts.load('600 30px "Public Sans"'); } catch (e) { /* fallback fonts */ }
+    const c = document.createElement('canvas');
+    c.width = 1080; c.height = 1350;
+    const g = c.getContext('2d');
+    const disp = '"Bricolage Grotesque", "Public Sans", system-ui, sans-serif';
+    const body = '"Public Sans", system-ui, sans-serif';
+    g.fillStyle = W.blue; g.fillRect(0, 0, 1080, 1350);
+    g.strokeStyle = '#3d5ff5'; g.lineWidth = 60; g.beginPath(); g.arc(900, 120, 330, 0, Math.PI * 2); g.stroke();
+    g.fillStyle = W.paper;
+    g.font = `600 34px ${body}`; g.fillText(`${f.camp.name} · ${scopeName(f.regions)}`, 80, 150);
+    g.font = `800 120px ${disp}`; g.fillText('Le bilan', 74, 290);
+    g.font = `500 30px ${body}`; g.fillText(`${fmtDayLong(f.camp.start)} – ${fmtDayLong(f.camp.end)}`, 80, 350);
+    const tiles = [
+      [FMT.short(f.unique), 'joueurs uniques'],
+      [FMT.short(f.games), 'parties jouées'],
+      [f.repeat != null ? FMT.pct0(f.repeat) : '—', 'sont revenus jouer'],
+      [f.won ? FMT.short(f.won) : '—', 'prix gagnés'],
+      [f.redeemed ? FMT.short(f.redeemed) : '—', 'prix échangés'],
+      [f.downloads && f.downloadsBefore ? `×${nf1.format(f.downloads / f.downloadsBefore)}` : '—', 'téléchargements vs avant'],
+    ];
+    tiles.forEach(([v, l], i) => {
+      const x = 80 + (i % 2) * 470;
+      const y = 440 + Math.floor(i / 2) * 270;
+      g.fillStyle = 'rgba(255,255,255,0.12)';
+      if (g.roundRect) { g.beginPath(); g.roundRect(x, y, 440, 240, 28); g.fill(); } else g.fillRect(x, y, 440, 240);
+      g.fillStyle = W.paper;
+      // Shrink to fit the tile, whatever font actually loaded.
+      let size = 96;
+      do { g.font = `800 ${size}px ${disp}`; size -= 4; } while (g.measureText(v).width > 372 && size > 48);
+      g.fillText(v, x + 32, y + 130);
+      size = 30;
+      do { g.font = `500 ${size}px ${body}`; size -= 1; } while (g.measureText(l).width > 380 && size > 20);
+      g.fillText(l, x + 34, y + 192);
+    });
+    const meta = state.meta[f.camp.code];
+    g.font = `500 24px ${body}`; g.globalAlpha = 0.8;
+    g.fillText(meta?.refreshedAt ? `Données au ${stampFmt.format(new Date(meta.refreshedAt))}` : '', 80, 1290);
+    g.globalAlpha = 1;
+    const blob = await new Promise((r) => c.toBlob(r, 'image/png'));
+    try { await caps.downloads.save({ filename: `bilan-${f.camp.code}.png`, data: blob }); }
+    catch (e) { if (e?.code !== 'declined') setPageMsg(`La carte n'a pas pu être préparée (${escapeHtml(e?.code || 'erreur')}).`); }
   }
 
   // ---------------------------------------------------------------------------
