@@ -176,39 +176,68 @@ select {
 .split.even { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 @media (max-width: 900px) { .split, .split.even { grid-template-columns: minmax(0, 1fr); } }
 
-/* Hero: the four numbers a PO reads first */
-.hero { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+/* KPI cards. Every card has the same anatomy (label / value / context line).
+   Cards share their parent's row tracks through subgrid, so values line up across a row
+   even when one label wraps to two lines. */
+.hero { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-auto-rows: auto; gap: 16px; }
 @media (max-width: 1000px) { .hero { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-.hero .k { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px 12px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.hero .k {
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px 12px;
+  display: grid; grid-row: span 4; grid-template-rows: subgrid; row-gap: 4px; min-width: 0;
+}
 .hero .k-value { font-size: 30px; font-weight: 700; letter-spacing: -.02em; line-height: 1.15; }
-.spark { width: 100%; height: 36px; margin-top: 6px; display: block; }
+.spark-wrap { position: relative; margin-top: 6px; }
+.spark { width: 100%; height: 36px; display: block; }
+.spark-dot {
+  position: absolute; width: 8px; height: 8px; border-radius: 50%; transform: translate(-50%, -50%);
+  background: var(--data); box-shadow: 0 0 0 2px var(--surface);
+}
 
-/* KPI grid: quiet cells separated by hairlines */
-.kpis {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+.kpis { display: grid; gap: 22px; }
+.kgroup-head h3 { font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px 2px; }
+.kgroup-note { font-size: 12px; color: var(--muted); margin: 8px 2px 0; line-height: 1.45; }
+.kgroup-note .qdot { margin: 0 6px 0 0; }
+.kgrid {
+  display: grid; grid-template-columns: repeat(var(--n, 4), minmax(0, 1fr)); grid-auto-rows: auto; gap: 0;
   background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden;
 }
-.kpis.compact { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-.kpis .k { padding: 14px 18px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); margin: 0 -1px -1px 0; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.k-label { font-size: 12.5px; color: var(--ink-2); display: flex; align-items: center; gap: 6px; line-height: 1.3; }
-.k-value { font-size: 22px; font-weight: 650; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
-.k-value.na { font-size: 15px; font-weight: 500; color: var(--muted); padding-block: 4px; }
-.k-sub { font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 2px 6px; align-items: baseline; }
+.kgrid .k {
+  display: grid; grid-row: span 3; grid-template-rows: subgrid; row-gap: 3px; align-content: start; min-width: 0;
+  padding: 14px 18px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); margin: 0 -1px -1px 0;
+}
+@media (max-width: 760px) { .kgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+.k-label { font-size: 12.5px; color: var(--ink-2); line-height: 1.35; align-self: end; }
+.k-label .nobr { white-space: nowrap; }
+.k-label .info, .k-label .qdot { vertical-align: 1px; margin-left: 6px; }
+.k-main { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; min-width: 0; }
+.k-value { font-size: 22px; font-weight: 650; letter-spacing: -.01em; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.k-value.na { color: var(--muted); font-weight: 500; }
+.k-sub { font-size: 12px; color: var(--muted); line-height: 1.4; min-width: 0; overflow-wrap: anywhere; }
+.k-sub b { font-weight: 600; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.k-sub .scope { white-space: nowrap; }
 .delta { font-weight: 600; font-variant-numeric: tabular-nums; }
 .delta.up { color: var(--good-ink); }
 .delta.down { color: var(--critical-ink); }
 .delta.flat { color: var(--ink-2); }
 .info {
   display: inline-grid; place-items: center; width: 15px; height: 15px; border-radius: 50%;
-  border: 1px solid var(--line-2); color: var(--muted); font-size: 10px; font-weight: 700; cursor: help; flex: none;
+  border: 1px solid var(--line-2); color: var(--muted); font-size: 10px; font-weight: 700; cursor: help;
 }
-.flag { font-size: 11px; color: var(--muted); border-bottom: 1px dotted var(--muted); cursor: help; white-space: nowrap; }
-.flag.missing { color: var(--critical-ink); border-color: var(--critical-ink); }
-.state { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; white-space: nowrap; }
-.state::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+/* Partial-data marker: one quiet dot on the label; the group note says why. */
+.qdot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--warning); cursor: help; }
+.state {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; white-space: nowrap;
+  padding: 2px 9px 2px 7px; border-radius: 999px; background: var(--sunken); color: var(--ink-2);
+}
+.state::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
 .state.under::before { background: var(--warning); }
 .state.over::before { background: var(--critical); }
 .state.ok::before { background: var(--good); }
+/* Not yet connected: dashed placeholder instead of an empty number. */
+.k.missing { position: relative; }
+.k.missing::before { content: ""; position: absolute; inset: 7px; border: 1px dashed var(--line-2); border-radius: 8px; pointer-events: none; }
+.k.missing .k-value { color: var(--muted); font-weight: 500; }
 
 /* Card header */
 .c-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 6px 14px; margin-bottom: 10px; }
@@ -303,8 +332,7 @@ table.data tr:last-child td { border-bottom: 0; }
   .bar { position: static; }
   .status { margin-left: 0; width: 100%; order: 3; }
   .hero .k-value { font-size: 24px; }
-  .kpis, .kpis.compact { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .kpis .k { padding: 12px 14px; }
+  .kgrid .k { padding: 12px 14px; }
   .k-value { font-size: 19px; }
   .card { padding: 14px; }
   .chart { height: 220px; }
@@ -459,7 +487,7 @@ table.data tr:last-child td { border-bottom: 0; }
 <main class="page">
   <section class="panel" id="panel-overview" role="tabpanel" aria-labelledby="tab-overview">
     <div class="hero" id="hero"></div>
-    <div class="kpis compact" id="kpis-overview"></div>
+    <div class="kpis" id="kpis-overview"></div>
     <div class="split">
       <figure class="card" id="card-trend"></figure>
       <figure class="card" id="card-bu"></figure>
@@ -1136,8 +1164,78 @@ FROM rctapi_minigame_editions WHERE deleted_at IS NULL ORDER BY start_at DESC`;
   }
 
   // ---------------------------------------------------------------------------
-  // KPI cells
+  // KPI cards. One anatomy for every card: label (2 lines reserved) -> value ->
+  // one context line. The context line shows the comparison when it exists,
+  // otherwise a factual ratio computed from the loaded data (never typed in).
   // ---------------------------------------------------------------------------
+  const KPI_GROUPS = {
+    audience: [
+      { title: 'Acquisition', ids: ['paid_app_installs', 'signups', 'new_players'], note: "Téléchargements : toutes provenances, pas encore attribués au média payant. Non ventilés par BU." },
+      { title: 'Activité', ids: ['unique_players', 'dau', 'wau'] },
+      { title: 'Fidélité', ids: ['sessions_per_user', 'repeat_visit_rate', 'games_played'], note: "Jours actifs par joueur remplace « sessions par utilisateur » : le jeu n'enregistre pas de sessions d'app." },
+    ],
+    prix: [
+      { title: 'Distribution', ids: ['instant_prizes_won', 'instant_prizes_redeemed', 'redemption_rate'] },
+      { title: 'Stock et grand prix', ids: ['prizes_remaining', 'distribution_pacing', 'grand_prize_entries'] },
+    ],
+    mecaniques: [
+      { title: 'Actions et défis', ids: ['bonus_challenge_completions', 'badges_earned'] },
+      { title: 'Parrainage', ids: ['referrals', 'referrers'], note: 'Seuls les parrainages réussis sont enregistrés ; les invitations envoyées ne le sont pas.' },
+      { title: 'Publicité', ids: ['partner_ad_impressions', 'ad_completed_views'] },
+    ],
+    commercial: [
+      { title: 'Magasin', ids: ['store_traffic', 'coupon_traffic_contribution'], note: 'Coupons activés : numérateur de la contribution au trafic. Le trafic total attend les données des points de vente (POS).' },
+      { title: 'Ventes LIFT', ids: ['lift_revenue', 'lift_transactions', 'avg_spend_per_transaction', 'items_per_basket'], note: 'LIFT : achats rattachés au jeu par le numéro saisi à la caisse, pas le revenu LIFT total.' },
+    ],
+  };
+
+  // Context lines: factual ratios from the snapshot. Return null when not meaningful for the range.
+  const q = (x, id) => (x.res?.[id] ? regionFilter(x.res[id].rows, x.regions, false) : null);
+  const daysIn = (rg, redeem) => diffDays(rg.d0, redeem ? rg.redeemD1 : rg.d1) + 1;
+  function topOf(rows, key, val) {
+    const by = new Map();
+    for (const r of rows) by.set(r[key], (by.get(r[key]) || 0) + (r[val] || 0));
+    return [...by.entries()].sort((a, b) => b[1] - a[1])[0] || null;
+  }
+  const CTX = {
+    paid_app_installs: (x) => { const rows = daily(x.res, 'q12', x.rg, x.regions, { noRegion: true }); if (!rows) return null;
+      const ios = sum(rows, (r) => (state.banner !== 'Circle K' ? r.couche_tard_ios : 0) + (state.banner !== 'Couche-Tard' ? r.circle_k_ios : 0));
+      const web = sum(rows, (r) => (state.banner !== 'Circle K' ? r.couche_tard_ios_web_referrer : 0) + (state.banner !== 'Couche-Tard' ? r.circle_k_ios_web_referrer : 0));
+      return ios ? [b(FMT.pct0(web / ios)), ' des installations iOS via un lien web'] : null; },
+    signups: (x) => {
+      const f = x.rg.kind === 'all' && q(x, 'q13');
+      if (f) return [b(FMT.pct0(sum(f, 'played') / sum(f, 'signed_up'))), ' ont joué au moins une partie'];
+      return x.value ? [b(FMT.int(x.value / daysIn(x.rg))), ' par jour en moyenne'] : null;
+    },
+    new_players: (x) => { const r = q(x, 'q02'); return r ? [b(FMT.pct0(sum(r, 'new_to_ck_games') / sum(r, 'unique_players'))), ' des joueurs uniques'] : null; },
+    unique_players: (x) => { const d = daily(x.res, 'q01', x.rg, x.regions); return d && x.value ? [b(FMT.dec1(sum(d, 'games_played') / x.value)), ' parties par joueur'] : null; },
+    dau: (x) => { const d = daily(x.res, 'q01', x.rg, x.regions); if (!d || !d.length) return null; const t = topOf(d, 'day', 'active_players'); return t ? ['pic : ', b(FMT.int(t[1])), ` le ${fmtDay(t[0])}`] : null; },
+    wau: (x) => { if (x.rg.kind !== 'all') return null; const r = q(x, 'q02'); return r && x.value ? [b(FMT.pct0(x.value / sum(r, 'unique_players'))), ' des joueurs uniques chaque semaine'] : null; },
+    sessions_per_user: (x) => ['sur ', b(FMT.int(daysIn(x.rg))), ' jours de jeu possibles'],
+    repeat_visit_rate: (x) => { const r = q(x, 'q02'); return r ? [b(FMT.int(sum(r, 'repeat_players'))), ' joueurs revenus'] : null; },
+    games_played: (x) => (x.value ? [b(FMT.int(x.value / daysIn(x.rg))), ' parties par jour en moyenne'] : null),
+    instant_prizes_won: (x) => { const f = x.rg.kind === 'all' && q(x, 'q13'); return f ? [b(FMT.pct0(sum(f, 'won_prize') / sum(f, 'played'))), ' des joueurs ont gagné un prix'] : null; },
+    instant_prizes_redeemed: (x) => { const w = daily(x.res, 'q05', x.rg, x.regions, { redeem: true }); const tw = w && sum(w, 'won'); return tw && x.value != null ? [b(FMT.pct0(x.value / tw)), ' des prix gagnés'] : null; },
+    redemption_rate: (x) => { const f = q(x, 'q13'); return f ? [b(FMT.int(sum(f, 'redeemed_prize'))), ' joueurs ont échangé un prix'] : null; },
+    prizes_remaining: (x) => { const r = q(x, 'q04'); return r && x.value != null ? [b(FMT.pct0(x.value / sum(r, 'inventory'))), " de l'inventaire, à ce jour"] : null; },
+    distribution_pacing: (x) => { const r = q(x, 'q04'); if (!r) return null;
+      const by = new Map(); for (const p of r) { const o = by.get(p.partner) || { n: 0, p: 0 }; o.n += p.net_awarded || 0; o.p += p.planned_to_date || 0; by.set(p.partner, o); }
+      const under = [...by.values()].filter((o) => o.p && o.n / o.p < 0.9).length; return [b(`${under} sur ${by.size}`), ' partenaires sous le plan']; },
+    grand_prize_entries: (x) => { const u = x.rg.kind === 'all' && q(x, 'q02'); return u && x.value ? [b(FMT.int(x.value / sum(u, 'unique_players'))), ' par joueur en moyenne'] : null; },
+    bonus_challenge_completions: (x) => { const r = q(x, 'q07'); if (!r) return null; const t = topOf(r.filter((y) => y.kind === 'bonus_action'), 'title_fr', 'players'); return t ? ['la plus populaire : ', b(t[0])] : null; },
+    badges_earned: (x) => { const r = q(x, 'q07'); if (!r) return null; const t = topOf(r.filter((y) => y.kind === 'badge'), 'title_fr', 'players'); return t ? ['le plus réussi : ', b(t[0])] : null; },
+    referrals: (x) => { const r = q(x, 'q08'); return r ? ['par ', b(FMT.int(sum(r, 'referrers'))), ' parrains'] : null; },
+    referrers: (x) => { const r = q(x, 'q08'); return r && x.value ? [b(FMT.dec1(sum(r, 'successful_referrals') / x.value)), ' parrainage(s) réussi(s) chacun'] : null; },
+    partner_ad_impressions: (x) => { const r = q(x, 'q09'); return r ? [b(String(new Set(r.map((y) => y.partner)).size)), ' partenaires annonceurs'] : null; },
+    ad_completed_views: (x) => { const r = q(x, 'q09'); return r && x.value != null ? [b(FMT.pct(x.value / sum(r, 'impressions'))), ' des impressions vues en entier'] : null; },
+    coupon_traffic_contribution: (x) => (x.value ? [b(FMT.int(x.value / daysIn(x.rg, true))), ' par jour en moyenne'] : null),
+    lift_revenue: (x) => { const d = daily(x.res, 'q10', x.rg, x.regions); return d ? ['sur ', b(FMT.int(sum(d, 'lift_transactions'))), ' transactions'] : null; },
+    lift_transactions: (x) => (x.value ? [b(FMT.dec1(x.value / daysIn(x.rg))), ' par jour en moyenne'] : null),
+    avg_spend_per_transaction: (x) => { const d = daily(x.res, 'q10', x.rg, x.regions); return d ? ['sur ', b(FMT.money(sum(d, 'lift_revenue'))), ' de ventes'] : null; },
+    items_per_basket: (x) => { const d = daily(x.res, 'q10', x.rg, x.regions); const t = d && sum(d, 'lift_transactions'); return t ? ['dont ', b(FMT.dec1(sum(d, 'eligible_items') / t)), ' article(s) admissible(s)'] : null; },
+  };
+  function b(text) { return el('b', {}, text); }
+
   function deltaText(k, cur, cmp) {
     if (cur == null || cmp == null) return null;
     if (k.delta === 'pts') {
@@ -1151,74 +1249,96 @@ FROM rctapi_minigame_editions WHERE deleted_at IS NULL ORDER BY start_at DESC`;
     const txt = d >= 1 ? `×${nf1.format(cur / cmp)}` : `${d > 0 ? '+' : d < 0 ? '−' : ''}${nf1.format(Math.abs(d) * 100)} %`;
     return el('span', { class: `delta ${cls}` }, txt);
   }
-  function subLine(v) {
+  function contextLine(v) {
     const { k, value, cmp, cmpInfo, rg } = v;
-    if (k.missing) return [el('span', {}, 'En attente des données POS')];
+    if (k.missing) return [el('span', {}, 'Source : points de vente (POS)')];
     if (value == null && k.exact && rg && rg.kind === 'custom') return [el('span', {}, NEEDS_EXACT)];
-    const parts = [];
+    if (value == null) return [];
     const d = deltaText(k, value, cmp);
-    if (d) parts.push(d, el('span', {}, cmpInfo.label));
-    if (k.scope === 'campaign' && rg && rg.kind !== 'all') parts.push(el('span', {}, 'Total de campagne'));
-    if (k.scope === 'stock') parts.push(el('span', {}, 'À ce jour'));
-    if (k.noRegion && !allRegionsSelected()) parts.push(el('span', {}, 'Toutes BU'));
-    return parts;
+    const out = [];
+    if (d) out.push(d, el('span', {}, ` ${cmpInfo.label}`));
+    else {
+      const camp = currentCampaign();
+      let c = null;
+      try { c = CTX[k.id]?.({ res: state.results[camp?.code], camp, rg, regions: activeRegions(), value }); } catch (e) { c = null; }
+      if (c) out.push(el('span', {}, c));
+    }
+    if (k.scope === 'campaign' && rg && rg.kind !== 'all') out.push(el('span', { class: 'scope' }, ' · total de campagne'));
+    if (k.noRegion && !allRegionsSelected()) out.push(el('span', { class: 'scope' }, ' · toutes BU'));
+    return out;
   }
   function labelNode(k) {
     const status = sourceStatus(k);
     const def = KPI_DEF[k.kpiRef || k.id];
     const tipText = [k.note || def?.definition_fr, def?.source_fr ? `Source : ${def.source_fr}` : null].filter(Boolean).join(' ');
+    // Icons sit inline right after the text, so they never drift to the far edge.
+    // The last word stays glued to the icons so an icon never wraps onto a line by itself.
+    const cut = k.label.lastIndexOf(' ');
     return el('div', { class: 'k-label' },
-      el('span', {}, k.label),
-      tipText ? el('span', { class: 'info', tabindex: 0, 'data-tip': tipText, 'aria-label': `À propos : ${k.label}` }, 'i') : null,
-      status === 'partial' ? el('span', { class: 'flag', tabindex: 0, 'data-tip': k.note || def?.source_fr || 'Donnée partielle' }, 'partiel') : null,
-      status === 'missing' ? el('span', { class: 'flag missing', tabindex: 0, 'data-tip': k.note || 'Source de données manquante' }, 'source manquante') : null);
+      cut > 0 ? k.label.slice(0, cut + 1) : '',
+      el('span', { class: 'nobr' }, k.label.slice(cut + 1),
+      status === 'partial' ? el('span', { class: 'qdot', tabindex: 0, 'data-tip': `Donnée partielle. ${k.note || def?.source_fr || ''}`.trim(), 'aria-label': 'Donnée partielle' }) : null,
+      tipText ? el('span', { class: 'info', tabindex: 0, 'data-tip': tipText, 'aria-label': `À propos : ${k.label}` }, 'i') : null));
   }
   function valueText(v) {
     const { k, value, loaded } = v;
     if (value != null) return FMT[k.fmt](value);
-    if (k.missing) return 'Non disponible';
+    if (k.missing) return 'À brancher';
     if (!loaded) return state.busy ? '…' : '—';
     return '—';
   }
   function kpiCell(id, hero) {
     const v = kpiValue(KPI[id]);
     const st = v.k.state ? v.k.state(v.value) : null;
-    const cell = el('div', { class: 'k' },
+    const cell = el('div', { class: `k${v.k.missing ? ' missing' : ''}` },
       labelNode(v.k),
-      el('div', { class: `k-value${v.value == null ? ' na' : ''}` }, valueText(v)),
-      st ? el('span', { class: `state ${st.cls}` }, st.label) : null,
-      el('div', { class: 'k-sub' }, subLine(v)));
+      el('div', { class: 'k-main' },
+        el('span', { class: `k-value${v.value == null ? ' na' : ''}` }, valueText(v)),
+        st ? el('span', { class: `state ${st.cls}` }, st.label) : null),
+      el('div', { class: 'k-sub' }, contextLine(v)));
     if (hero && v.k.spark) cell.append(sparkline(v.k));
     return cell;
   }
+  function groupBlock(g) {
+    const partial = g.ids.some((id) => sourceStatus(KPI[id]) === 'partial');
+    return el('div', { class: 'kgroup' },
+      el('div', { class: 'kgroup-head' }, el('h3', {}, g.title)),
+      el('div', { class: 'kgrid', style: `--n:${g.ids.length}` }, g.ids.map((id) => kpiCell(id))),
+      g.note ? el('p', { class: 'kgroup-note' }, partial ? el('span', { class: 'qdot', 'aria-hidden': 'true' }) : null, g.note) : null);
+  }
   function renderKpis() {
     $('hero').replaceChildren(...OVERVIEW_HERO.map((id) => kpiCell(id, true)));
-    $('kpis-overview').replaceChildren(...OVERVIEW_MORE.map((id) => kpiCell(id)));
+    $('kpis-overview').replaceChildren(el('div', { class: 'kgrid', style: `--n:${OVERVIEW_MORE.length}` }, OVERVIEW_MORE.map((id) => kpiCell(id))));
     for (const sec of ['audience', 'prix', 'mecaniques', 'commercial']) {
-      $(`kpis-${sec}`).replaceChildren(...KPIS.filter((k) => k.section === sec).map((k) => kpiCell(k.id)));
+      $(`kpis-${sec}`).replaceChildren(...KPI_GROUPS[sec].map(groupBlock));
     }
   }
 
-  // Inline SVG sparkline of the KPI's daily series over the selected range.
+  // Inline SVG sparkline of the KPI's daily series over the selected range, with the last value marked.
   function sparkline(k) {
     const camp = currentCampaign();
     const rg = currentRange();
     const res = state.results[camp?.code];
+    const wrap = el('div', { class: 'spark-wrap' });
     const box = svgEl('svg', { class: 'spark', viewBox: '0 0 200 36', preserveAspectRatio: 'none', 'aria-hidden': 'true' });
-    if (!res || !rg) return box;
+    wrap.append(box);
+    if (!res || !rg) return wrap;
     const s = k.spark();
     const rows = daily(res, s.qid, rg, activeRegions(), { noRegion: s.noRegion, allowUnassigned: allRegionsSelected(), redeem: s.redeem });
-    if (!rows || !rows.length) return box;
+    if (!rows || !rows.length) return wrap;
     const days = eachDay(rg.d0, s.redeem ? rg.redeemD1 : rg.d1);
     const vals = days.map((d) => sum(rows.filter((r) => r.day === d), s.f));
-    if (vals.length < 2) return box;
+    if (vals.length < 2) return wrap;
     const max = Math.max(...vals) || 1;
     const pts = vals.map((v, i) => [(i / (vals.length - 1)) * 196 + 2, 33 - (v / max) * 29]);
     const line = pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join('');
     const color = cssVar('--data');
     box.append(svgEl('path', { d: `${line}L198,35L2,35Z`, fill: color, opacity: '0.10' }));
     box.append(svgEl('path', { d: line, fill: 'none', stroke: color, 'stroke-width': '1.5', 'vector-effect': 'non-scaling-stroke' }));
-    return box;
+    // HTML dot (not SVG) so it stays round whatever the card width.
+    const last = pts[pts.length - 1];
+    wrap.append(el('span', { class: 'spark-dot', style: `left:${(last[0] / 200) * 100}%;top:${(last[1] / 36) * 100}%`, title: `${fmtDay(days[days.length - 1])} : ${FMT.int(vals[vals.length - 1])}` }));
+    return wrap;
   }
 
   // ---------------------------------------------------------------------------

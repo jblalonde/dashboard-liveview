@@ -171,39 +171,68 @@ select {
 .split.even { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 @media (max-width: 900px) { .split, .split.even { grid-template-columns: minmax(0, 1fr); } }
 
-/* Hero: the four numbers a PO reads first */
-.hero { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+/* KPI cards. Every card has the same anatomy (label / value / context line).
+   Cards share their parent's row tracks through subgrid, so values line up across a row
+   even when one label wraps to two lines. */
+.hero { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-auto-rows: auto; gap: 16px; }
 @media (max-width: 1000px) { .hero { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-.hero .k { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px 12px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.hero .k {
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px 12px;
+  display: grid; grid-row: span 4; grid-template-rows: subgrid; row-gap: 4px; min-width: 0;
+}
 .hero .k-value { font-size: 30px; font-weight: 700; letter-spacing: -.02em; line-height: 1.15; }
-.spark { width: 100%; height: 36px; margin-top: 6px; display: block; }
+.spark-wrap { position: relative; margin-top: 6px; }
+.spark { width: 100%; height: 36px; display: block; }
+.spark-dot {
+  position: absolute; width: 8px; height: 8px; border-radius: 50%; transform: translate(-50%, -50%);
+  background: var(--data); box-shadow: 0 0 0 2px var(--surface);
+}
 
-/* KPI grid: quiet cells separated by hairlines */
-.kpis {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+.kpis { display: grid; gap: 22px; }
+.kgroup-head h3 { font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px 2px; }
+.kgroup-note { font-size: 12px; color: var(--muted); margin: 8px 2px 0; line-height: 1.45; }
+.kgroup-note .qdot { margin: 0 6px 0 0; }
+.kgrid {
+  display: grid; grid-template-columns: repeat(var(--n, 4), minmax(0, 1fr)); grid-auto-rows: auto; gap: 0;
   background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden;
 }
-.kpis.compact { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-.kpis .k { padding: 14px 18px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); margin: 0 -1px -1px 0; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.k-label { font-size: 12.5px; color: var(--ink-2); display: flex; align-items: center; gap: 6px; line-height: 1.3; }
-.k-value { font-size: 22px; font-weight: 650; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
-.k-value.na { font-size: 15px; font-weight: 500; color: var(--muted); padding-block: 4px; }
-.k-sub { font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 2px 6px; align-items: baseline; }
+.kgrid .k {
+  display: grid; grid-row: span 3; grid-template-rows: subgrid; row-gap: 3px; align-content: start; min-width: 0;
+  padding: 14px 18px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); margin: 0 -1px -1px 0;
+}
+@media (max-width: 760px) { .kgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+.k-label { font-size: 12.5px; color: var(--ink-2); line-height: 1.35; align-self: end; }
+.k-label .nobr { white-space: nowrap; }
+.k-label .info, .k-label .qdot { vertical-align: 1px; margin-left: 6px; }
+.k-main { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; min-width: 0; }
+.k-value { font-size: 22px; font-weight: 650; letter-spacing: -.01em; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.k-value.na { color: var(--muted); font-weight: 500; }
+.k-sub { font-size: 12px; color: var(--muted); line-height: 1.4; min-width: 0; overflow-wrap: anywhere; }
+.k-sub b { font-weight: 600; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.k-sub .scope { white-space: nowrap; }
 .delta { font-weight: 600; font-variant-numeric: tabular-nums; }
 .delta.up { color: var(--good-ink); }
 .delta.down { color: var(--critical-ink); }
 .delta.flat { color: var(--ink-2); }
 .info {
   display: inline-grid; place-items: center; width: 15px; height: 15px; border-radius: 50%;
-  border: 1px solid var(--line-2); color: var(--muted); font-size: 10px; font-weight: 700; cursor: help; flex: none;
+  border: 1px solid var(--line-2); color: var(--muted); font-size: 10px; font-weight: 700; cursor: help;
 }
-.flag { font-size: 11px; color: var(--muted); border-bottom: 1px dotted var(--muted); cursor: help; white-space: nowrap; }
-.flag.missing { color: var(--critical-ink); border-color: var(--critical-ink); }
-.state { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; white-space: nowrap; }
-.state::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+/* Partial-data marker: one quiet dot on the label; the group note says why. */
+.qdot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--warning); cursor: help; }
+.state {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; white-space: nowrap;
+  padding: 2px 9px 2px 7px; border-radius: 999px; background: var(--sunken); color: var(--ink-2);
+}
+.state::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
 .state.under::before { background: var(--warning); }
 .state.over::before { background: var(--critical); }
 .state.ok::before { background: var(--good); }
+/* Not yet connected: dashed placeholder instead of an empty number. */
+.k.missing { position: relative; }
+.k.missing::before { content: ""; position: absolute; inset: 7px; border: 1px dashed var(--line-2); border-radius: 8px; pointer-events: none; }
+.k.missing .k-value { color: var(--muted); font-weight: 500; }
 
 /* Card header */
 .c-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 6px 14px; margin-bottom: 10px; }
@@ -298,8 +327,7 @@ table.data tr:last-child td { border-bottom: 0; }
   .bar { position: static; }
   .status { margin-left: 0; width: 100%; order: 3; }
   .hero .k-value { font-size: 24px; }
-  .kpis, .kpis.compact { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .kpis .k { padding: 12px 14px; }
+  .kgrid .k { padding: 12px 14px; }
   .k-value { font-size: 19px; }
   .card { padding: 14px; }
   .chart { height: 220px; }

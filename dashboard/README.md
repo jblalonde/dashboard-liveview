@@ -94,6 +94,19 @@ Screens whose data is missing are skipped.
   - **FY26**: uses `comparison_edition_id`, aligned on campaign day.
   - A change is shown only when the comparison exists. Otherwise the tile stays quiet.
 
+## KPI cards
+
+- Every card has the same three rows: label, value, one context line. Cards use CSS subgrid so the
+  values line up across a row even when a label wraps.
+- The context line shows the change against the comparison when it exists. Otherwise it shows a
+  ratio computed from the loaded data (for example "94 % ont joué au moins une partie" or "sur
+  3 415 transactions"). These ratios are never typed in. `CTX` in `app.js` defines them, and they
+  skip any value that can't be summed across days (distinct buyers, distinct redeemers).
+- The section tabs group cards by theme in full rows (Acquisition, Activité, Fidélité…).
+- Partial data is marked by a small amber dot on the label. One note under the group explains it.
+- A KPI whose source isn't connected yet (store traffic) is a dashed placeholder.
+- The overview's main cards mark the last value of their sparkline.
+
 ## Export
 
 - **Exporter les KPI**: the visible tiles with their filters, comparison, source status and
