@@ -1,0 +1,14 @@
+province_code,province_name_fr,region_code,region_name,contest_region,client_rollup,db_business_unit,banner_default
+NS,Nouvelle-Écosse,ATL,Atlantic Canada,atlantic,Eastern,Eastern Canada,Circle K
+NB,Nouveau-Brunswick,ATL,Atlantic Canada,atlantic,Eastern,Eastern Canada,Circle K
+PE,Île-du-Prince-Édouard,ATL,Atlantic Canada,atlantic,Eastern,Eastern Canada,Circle K
+NL,Terre-Neuve-et-Labrador,ATL,Atlantic Canada,atlantic,Eastern,Eastern Canada,Circle K
+QC,Québec,QC,Quebec,quebec,Eastern,Eastern Canada,Couche-Tard
+ON,Ontario,CC,Central Canada,central,Central,Ontario,Circle K
+BC,Colombie-Britannique,WC,Western Canada,western,Western,Western Canada,Circle K
+AB,Alberta,WC,Western Canada,western,Western,Western Canada,Circle K
+SK,Saskatchewan,WC,Western Canada,western,Western,Western Canada,Circle K
+MB,Manitoba,WC,Western Canada,western,Western,Western Canada,Circle K
+NT,Territoires du Nord-Ouest,WC,Western Canada,western,Western,Western Canada,Circle K
+NU,Nunavut,WC,Western Canada,western,Western,Western Canada,Circle K
+YT,Yukon,WC,Western Canada,western,Western,Western Canada,Circle K

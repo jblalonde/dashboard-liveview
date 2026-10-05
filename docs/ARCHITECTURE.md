@@ -56,8 +56,8 @@ an incremental daily build, plus intraday refreshes for the game-platform KPIs.
 |---|---|---|
 | `dim_campaign` | `edition_id` | From `rctapi_minigame_editions`: name, code, start/end, BUs and banners in scope, **comparison edition** (e.g. RPP 2026 → RPP 2025) |
 | `dim_date` | `date` | Calendar + **Couche-Tard fiscal calendar** (FY, period, fiscal week) + `campaign_day_n` per edition |
-| `dim_bu` | `bu_id` | |
-| `dim_banner` | `banner_id` | |
+| `dim_region` | `region_code` | ATL / QC / CC / WC → client rollup (Eastern = ATL + QC) → banner. See `seeds/geo_region.csv` |
+| `dim_partner_map` | `pattern` | Keyword → partner for ads and prizes. See `seeds/partners.csv` |
 | `dim_store` | `store_id` | → BU, banner, region, timezone |
 | `dim_partner` | `partner_id` | Prize and ad partners |
 | `dim_prize` | `prize_id` | → partner, tier (instant / grand prize), planned inventory |

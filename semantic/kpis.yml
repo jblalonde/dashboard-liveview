@@ -9,7 +9,7 @@
 #   derived    -> computed from other KPIs / plan data
 # status: available | partial | missing — see docs/DATA_MAPPING.md (explored 2026-10-05).
 
-dimensions: [edition_id, date, bu_id, banner_id]
+dimensions: [edition_id, date, region_code, client_rollup, banner]   # see seeds/geo_region.csv
 comparisons: [previous_period, fy26_like_for_like, fy26_same_fiscal_period]
 
 kpis:
@@ -38,8 +38,8 @@ kpis:
     type: distinct
     definition: Players whose first-ever game play (any edition) falls in the period.
     open: First-ever across all Circle K games, or first in this edition?
-    status: partial
-    source: "rctapi_minigame_players.created_at; 'new to any CK game' = anti-join rctapi_labatt_*, rctapi_nhl_game_participations, rctapi_games_external_participation"
+    status: available
+    source: "rctapi_minigame_players minus users with earlier labatt / nhl / external / craft game participation (sql/kpi/02)"
 
   - id: unique_players
     label_fr: Joueurs uniques
@@ -117,9 +117,9 @@ kpis:
     category: prizes
     type: stock
     breakdowns: [prize_id, partner_id]
-    definition: Initial inventory minus awarded, as of end of period.
+    definition: Initial inventory minus net awarded (won minus coupons released back to stock after redemption timeout), as of end of period.
     status: available
-    source: "rctapi_promotions.quantity - grants per promotion (176 promotions = 53 prizes x 4 regions)"
+    source: "rctapi_promotions.quantity - (grants - grants released with release_reason='rpp_unredeemed_timeout') (sql/kpi/04)"
 
   - id: distribution_pacing
     label_fr: Rythme de distribution (sous/sur-distribution)
@@ -127,8 +127,8 @@ kpis:
     type: derived
     breakdowns: [prize_id, partner_id]
     definition: actual_awarded_to_date / planned_to_date; UNDER/ON_TRACK/OVER by tolerance; projected run-out date.
-    status: partial
-    source: "Actual from rctapi_promotion_grant; plan = linear between promotions.start_date/end_date; prize->partner mapping must be seeded"
+    status: available
+    source: "net awards (won - released) per promotion vs linear plan; partner from seeds/partners.csv (sql/kpi/04)"
 
   - id: grand_prize_entries
     label_fr: Participations au grand prix générées

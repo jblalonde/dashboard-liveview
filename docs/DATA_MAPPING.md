@@ -37,20 +37,26 @@ hand.
 
 ## 2. BU, region and banner
 
-- **BU:** take the player's province (`rctapi_minigame_players.province`) and look it up in
-  `rctapi_provinces.business_unit_id`, which links to `rctapi_business_units`. There are 3 BUs:
-  Eastern Canada (QC + Atlantic), Ontario and Western Canada.
-- **Contest region:** `contest_region` / `contest_region_snapshot` takes the values atlantic,
-  quebec, central and western. Prize inventory is split by these 4 regions, so this level is finer
-  than BU for pacing.
-- **Banner:** no game event is tied to a store. `rctapi_stores.brand`
-  (`couche-tard`/`circle-k`) exists but nothing in the game links to it. The best available
-  stand-in is the app the player uses, from `rctapi_user_app_target.app_target`:
-  - `QC` = Couche-Tard app, `CA` = Circle K app.
-  - About 24k players have no app target, so they go to "Unassigned".
-  - Some players have both targets, so we need a rule to pick one (e.g. the most recent
-    `last_login_at`).
-  - App downloads are split by app directly (`ct_*` / `ck_*`).
+The client's business units are confirmed (`seeds/geo_region.csv`):
+
+| Code | Region | Provinces | Client rollup | Banner |
+|---|---|---|---|---|
+| ATL | Atlantic Canada | NS, NB, PE, NL | Eastern | Circle K (see caveat) |
+| QC | Quebec | QC | Eastern | Couche-Tard |
+| CC | Central Canada | ON | Central | Circle K |
+| WC | Western Canada | BC, AB, SK, MB + NT, NU, YT | Western | Circle K |
+
+"Eastern" in the client's reports = ATL + QC.
+
+- **In the database:** the 4 codes match `contest_region` exactly (atlantic / quebec / central /
+  western), for every province (verified on `rctapi_minigame_participations`). They also match
+  how prize inventory is split: one promotion per prize per region.
+  `rctapi_business_units` only has 3 BUs, with QC and Atlantic merged into "Eastern Canada". The
+  dashboard therefore uses the seed, not that table.
+- **Player → region:** use `rctapi_minigame_players.province`. All players have a province.
+- **Banner caveat:** using QC = Couche-Tard holds at the region level. However, `rctapi_stores` lists
+  **171 Couche-Tard stores and 207 Circle K stores in Atlantic Canada**. No game event is tied to a
+  store, so banner by store isn't possible today, and ATL players are reported as Circle K.
 - **Store level is not available** for any KPI with the current data.
 
 ## 3. KPI → source
@@ -63,7 +69,7 @@ Status: ✅ available · 🟡 partial or uses a stand-in · ❌ not in the MCP
 |---|---|---|---|---|
 | 1 | Téléchargements via média payant | 🟡 | `rctapi_analytics_daily_observations`: daily, per app (CT/CK) and OS. iOS gives the App Store source type (`Web referrer`, `App referrer`, `App Store search`, `App Store browse`) under `*_ios_dimensions` → `"First-time download"`. Android gives totals only. **There is no paid-media attribution and no province.** | 2026-07-21: CK iOS 3,907, of which 2,049 came from a web referrer |
 | 2 | Inscriptions | ✅ | `rctapi_minigame_players.created_at`. New app accounts: `craft_ctapi_clients.dateCreated` | 363,858 players |
-| 3 | Nouveaux joueurs aux jeux Circle K | 🟡 | All players are new, because RPP 2026 is edition 1. "New to *any* CK game" needs an anti-join with the earlier games (`rctapi_labatt_*`, `rctapi_nhl_game_participations`, `rctapi_games_external_participation`) | |
+| 3 | Nouveaux joueurs aux jeux Circle K | ✅ | Players with no earlier participation in another game: `rctapi_labatt_game_session`, `rctapi_nhl_game_participations`, `rctapi_games_external_participation` or `craft_ctapi_game_participations` | 311,370 of 343,588 (QC: 158,598 of 190,701) |
 | 4 | Joueurs uniques | ✅ | `COUNT(DISTINCT rpp_player_id)` from `rctapi_rpp_game_sessions` | |
 | 5 | DAU | ✅ | `rctapi_user_login_days` (surface `rpp_webview` + `rpp_browser`, by `login_date`). Alternative: distinct players per `contest_date` in `rpp_game_sessions` | 2026-08-01: about 65k |
 | 6 | WAU | ✅ | Same source, distinct users per fiscal week | |
@@ -77,8 +83,8 @@ Status: ✅ available · 🟡 partial or uses a stand-in · ❌ not in the MCP
 |---|---|---|---|---|
 | 1 | Prix instantanés gagnés | ✅ | `rctapi_promotion_grant` where `type='rpp_instant_prize'` (joined to `rctapi_promotions.campaign='rpp-2026'`), plus gift cards in `rctapi_rpp_gift_card_codes` (Pet Valu / Chico, $15) | 2,145,927 coupons; 8,610 gift cards |
 | 2 | Prix instantanés échangés | ✅ | `rctapi_promotion_activations` on the RPP promotions (or `promotion_grant.activation_id IS NOT NULL`). Prize transfers: `rctapi_minigame_prize_transfers` (claimed / expired / pending) | 473,616 activations, 120,024 users |
-| 3 | Prix restants | ✅ | `rctapi_promotions.quantity` minus grants, per promotion. **176 promotions = 53 prizes × up to 4 regions.** Expired grants (`deleted_at`) are counted as awarded, unless the business wants them returned to stock | initial inventory 1,497,400 |
-| 4 | Rythme de distribution / partenaire | 🟡 | Actual: grants per promotion per day. Plan: a flat line between `start_date` and `end_date` (two waves: 07-21 → 08-23 and 08-18 → 09-20). **There is no partner column.** We need a seed table mapping each prize to its brand/partner (Takis, Hershey, Red Bull, Guru, Electrolit, Celsius, C4, private label…) | |
+| 3 | Prix restants | ✅ | Coupons that aren't redeemed in time go **back into stock** (`release_reason = 'rpp_unredeemed_timeout'`). So `remaining = quantity − (won − released)`. **176 promotions = 53 prizes × up to 4 regions** | inventory 1,497,400 · won 2,145,927 · released 1,667,598 · remaining 1,019,071 (68%) |
+| 4 | Rythme de distribution / partenaire | ✅ | Actual: net awards (won − released) per promotion. Plan: a straight line between `start_date` and `end_date` (two waves: 07-21 → 08-23 and 08-18 → 09-20). Partner comes from `seeds/partners.csv`, matched on keywords in the prize title (entries marked `to_confirm` still need checking) | at close, every prize was under-distributed (pacing 0.05 to 0.91) |
 | 5 | Participations au grand prix | ✅ | `SUM(quantity)` from `rctapi_minigame_entries`, by `source` (gameplay / badge / bonus / referral) and `contest_region_snapshot` | about 13.6M entries |
 
 ### Mécaniques de jeu
@@ -112,8 +118,8 @@ Status: ✅ available · 🟡 partial or uses a stand-in · ❌ not in the MCP
 
 ## 5. Data quality and technical notes
 
-- **Freshness:** the database is live (accounts and activations as of 2026-10-05). The RPP game
-  stopped around 2026-09-17 to 09-20.
+- **Freshness:** the database is live (accounts and activations as of 2026-10-05). RPP 2026 play
+  stopped on 2026-09-14, and coupons could be redeemed until 2026-09-19.
 - **`rctapi_rpp_activity_events` is an outbound event queue, not a source of truth.** Its events stop
   on 2026-09-11. Use the transactional tables instead.
 - **Exclusions:** `craft_ctapi_clients.is_employee` and `is_tester`, `rctapi_minigame_players.banned_at`
@@ -127,11 +133,40 @@ Status: ✅ available · 🟡 partial or uses a stand-in · ❌ not in the MCP
 - **PII** (phone, email, name) is blocked at the database level. The serving layer should stay
   aggregate-only.
 
-## 6. Data still needed outside this database
+## 6. Why some data isn't in the MCP
+
+The Couche-Tard MCP is a **read-only connection to one database**: the production MySQL behind the
+app and the game (`rctapi`). It sees what the app writes itself: players, games, prizes, coupons,
+ads, bonus actions, and the attributed purchases the game receives.
+
+Data that is produced in other systems is outside it:
+
+- **Store traffic, full LIFT revenue and baskets** come from POS / LIFT. The app only receives the
+  purchases attributed to a player through the checkout bonus action.
+- **Paid-media attribution** comes from the media platforms or an install-tracking tool (MMP). The
+  app only stores App Store / Play Store totals.
+- **Prize plans and partner contracts** live in spreadsheets or campaign briefs.
+- **The editions table** hasn't been deployed yet.
+
+The MCP also describes its schema with a **snapshot from 2026-04-16**. Tables created after that date
+(all `rctapi_rpp_*` and `rctapi_minigame_*` tables) can be queried, but they don't appear in the
+tool's description. An assistant reading only that description will conclude the data is missing,
+so **the schema snapshot should be refreshed**.
+
+For a single view, the options are:
+
+1. Load these external sources into the same warehouse as the extracted `rctapi` tables, and point
+   both the dashboard and a "warehouse MCP" at it. This is the recommended option.
+2. Add more connectors to the MCP, one per source. This is faster to set up, but cross-source joins
+   then happen in the dashboard.
+
+## 7. Data still needed outside this database
 
 1. Paid-media attribution for installs: an install-tracking tool (MMP) or UTM / deep-link data.
 2. POS data for store traffic, coupon contribution and the store/banner breakdown. The full LIFT
    extract (not just attributed purchases) also belongs here.
-3. A prize → partner mapping, with the planned distribution curve if it isn't linear.
-4. The `editions` table, or a confirmation of `edition_id` for RPP 2026 and 31DOCK.
+3. Validation of `seeds/partners.csv` (rows marked `to_confirm`), plus the planned distribution
+   curve if it isn't linear.
+4. The `rctapi_minigame_editions` table (template: `sql/editions/rctapi_minigame_editions.template.sql`)
+   and the 31DOCK details.
 5. A FY26 baseline for the game KPIs, if one exists in another system (previous campaigns).
