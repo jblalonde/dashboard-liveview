@@ -1,0 +1,296 @@
+# KPI contract — single source of truth for definitions.
+# The dashboard, exports and ad-hoc MCP queries must all derive from these definitions.
+#
+# type:
+#   additive   -> sum across any dimension
+#   distinct   -> distinct count; store HLL sketch or compute per grain
+#   ratio      -> store numerator/denominator, compute at query time
+#   stock      -> snapshot; sum across members, last value across time
+#   derived    -> computed from other KPIs / plan data
+# status: available | partial | missing — see docs/DATA_MAPPING.md (explored 2026-10-05).
+
+dimensions: [edition_id, date, region_code, client_rollup, banner]   # see seeds/geo_region.csv
+comparisons: [previous_period, fy26_like_for_like, fy26_same_fiscal_period]
+
+kpis:
+  # ---------- Audience et engagement ----------
+  - id: paid_app_installs
+    label_fr: Téléchargements d'app via le média payant
+    category: audience
+    type: additive
+    definition: App installs attributed by the MMP to a paid media source during the campaign window.
+    open: Attribution window? Is "paid" defined by media-source list?
+    definition_fr: "Téléchargements de l'app pendant la campagne. L'attribution au média payant n'est pas encore disponible : on affiche le total, avec la part iOS venant d'un référent web."
+    source_fr: "Statistiques App Store / Play Store quotidiennes (rctapi_analytics_daily_observations)"
+    status: partial
+    source: "rctapi_analytics_daily_observations (daily, per app CT/CK & OS; iOS source types in *_ios_dimensions). No paid-media attribution — needs MMP/UTM"
+
+  - id: signups
+    label_fr: Inscriptions
+    category: audience
+    type: additive
+    definition: New accounts created in the period.
+    open: New platform accounts only, or also existing accounts opting into this edition?
+    definition_fr: "Comptes de joueurs créés pendant la période."
+    source_fr: "rctapi_minigame_players"
+    status: available
+    source: "rctapi_minigame_players.created_at"
+
+  - id: new_players
+    label_fr: Nouveaux joueurs aux jeux Circle K
+    category: audience
+    type: distinct
+    definition: Players whose first-ever game play (any edition) falls in the period.
+    open: First-ever across all Circle K games, or first in this edition?
+    definition_fr: "Joueurs qui n'avaient jamais participé à un autre jeu de l'app avant la campagne."
+    source_fr: "rctapi_minigame_players, comparé aux jeux précédents (Labatt, LNH, jeux externes)"
+    status: available
+    source: "rctapi_minigame_players minus users with earlier labatt / nhl / external / craft game participation (sql/kpi/02)"
+
+  - id: unique_players
+    label_fr: Joueurs uniques
+    category: audience
+    type: distinct
+    definition: Distinct players with ≥1 game played in the period.
+    definition_fr: "Joueurs distincts ayant joué au moins une partie pendant la période."
+    source_fr: "rctapi_rpp_game_sessions"
+    status: available
+    source: "rctapi_rpp_game_sessions (distinct rpp_player_id)"
+
+  - id: dau
+    label_fr: Utilisateurs actifs quotidiens
+    category: audience
+    type: distinct
+    definition: Distinct active users per day; over a multi-day period, display the average daily value.
+    open: Is "active" = opened app, or = played?
+    definition_fr: "Joueurs distincts par jour, en moyenne sur la période."
+    source_fr: "rctapi_rpp_game_sessions"
+    status: available
+    source: "rctapi_user_login_days (surface rpp_webview + rpp_browser) or rctapi_rpp_game_sessions by contest_date"
+
+  - id: wau
+    label_fr: Utilisateurs actifs hebdomadaires
+    category: audience
+    type: distinct
+    definition: Distinct active users per fiscal week; over longer periods, display the average weekly value.
+    definition_fr: "Joueurs distincts par semaine (lundi à dimanche), en moyenne sur la période."
+    source_fr: "rctapi_rpp_game_sessions"
+    status: available
+    source: "rctapi_user_login_days (surface rpp_webview + rpp_browser)"
+
+  - id: sessions_per_user
+    label_fr: Sessions par utilisateur
+    category: audience
+    type: ratio
+    numerator: sessions
+    denominator: distinct active users
+    open: Session timeout definition (e.g. 30 min inactivity)?
+    definition_fr: "Jours actifs par joueur. Le jeu n'enregistre pas de sessions d'app : on compte les jours où chaque joueur a joué."
+    source_fr: "rctapi_rpp_game_sessions"
+    status: partial
+    source: "No app-session table for the game (login_count=0 on webview). Proxy: rctapi_rpp_game_sessions per active player-day"
+
+  - id: repeat_visit_rate
+    label_fr: Taux de visites répétées
+    category: audience
+    type: ratio
+    numerator: distinct users with ≥2 active days in the period
+    denominator: distinct active users in the period
+    definition_fr: "Part des joueurs revenus jouer au moins un deuxième jour."
+    source_fr: "rctapi_rpp_game_sessions"
+    status: available
+    source: "rctapi_user_login_days or rctapi_rpp_game_sessions (active days per player)"
+
+  - id: games_played
+    label_fr: Parties jouées
+    category: audience
+    type: additive
+    definition: Count of completed game plays.
+    definition_fr: "Parties terminées (gagnées, perdues ou nulles)."
+    source_fr: "rctapi_rpp_game_sessions"
+    status: available
+    source: "rctapi_rpp_game_sessions (status won/lost/draw); rounds in rctapi_rpp_game_rounds"
+
+  # ---------- Prix et distribution ----------
+  - id: instant_prizes_won
+    label_fr: Prix instantanés gagnés
+    category: prizes
+    type: additive
+    breakdowns: [prize_id, partner_id]
+    definition_fr: "Coupons instantanés attribués aux joueurs."
+    source_fr: "rctapi_promotion_grant (prix RPP)"
+    status: available
+    source: "rctapi_promotion_grant type='rpp_instant_prize' + rctapi_rpp_gift_card_codes"
+
+  - id: instant_prizes_redeemed
+    label_fr: Prix instantanés échangés
+    category: prizes
+    type: additive
+    breakdowns: [prize_id, partner_id]
+    definition: Redemptions in the period (by redemption date). Redemption rate shown as companion metric.
+    definition_fr: "Coupons activés en magasin, comptés à la date d'activation."
+    source_fr: "rctapi_promotion_activations"
+    status: available
+    source: "rctapi_promotion_activations on promotions.campaign='rpp-2026'"
+
+  - id: prizes_remaining
+    label_fr: Prix restants
+    category: prizes
+    type: stock
+    breakdowns: [prize_id, partner_id]
+    definition: Initial inventory minus net awarded (won minus coupons released back to stock after redemption timeout), as of end of period.
+    definition_fr: "Inventaire initial moins les prix réellement distribués. Les coupons non échangés à temps retournent dans l'inventaire."
+    source_fr: "rctapi_promotions (inventaire) et rctapi_promotion_grant"
+    status: available
+    source: "rctapi_promotions.quantity - (grants - grants released with release_reason='rpp_unredeemed_timeout') (sql/kpi/04)"
+
+  - id: distribution_pacing
+    label_fr: Rythme de distribution (sous/sur-distribution)
+    category: prizes
+    type: derived
+    breakdowns: [prize_id, partner_id]
+    definition: actual_awarded_to_date / planned_to_date; UNDER/ON_TRACK/OVER by tolerance; projected run-out date.
+    definition_fr: "Prix distribués ÷ plan linéaire à date, par prix et par partenaire. Sous 90 % : sous-distribution ; au-dessus de 110 % : sur-distribution."
+    source_fr: "rctapi_promotion_grant ; partenaires selon seeds/partners.csv"
+    status: available
+    source: "net awards (won - released) per promotion vs linear plan; partner from seeds/partners.csv (sql/kpi/04)"
+
+  - id: grand_prize_entries
+    label_fr: Participations au grand prix générées
+    category: prizes
+    type: additive
+    definition_fr: "Participations au tirage du grand prix, par source (parties, défis, actions bonus, parrainage)."
+    source_fr: "rctapi_minigame_entries"
+    status: available
+    source: "rctapi_minigame_entries SUM(quantity) by source, contest_region_snapshot"
+
+  # ---------- Mécaniques de jeu ----------
+  - id: bonus_challenge_completions
+    label_fr: Complétion des actions bonus et des défis
+    category: mechanics
+    type: additive
+    breakdowns: [action_id]
+    companion: completion rate = completers / exposed players
+    definition_fr: "Actions bonus complétées (abonnement courriel ou SMS, réseaux sociaux, vidéo, caisse) et défis réussis (badges)."
+    source_fr: "rctapi_minigame_participation_bonus_actions et _badges"
+    status: available
+    source: "rctapi_minigame_participation_bonus_actions + rctapi_minigame_participation_badges"
+
+  - id: referrals
+    label_fr: "Parrainage : participation et parrainages réussis"
+    category: mechanics
+    type: additive
+    measures: [referrers (distinct), invites_sent, successful_referrals]
+    open: What makes a referral "successful" — signup, or first play?
+    definition_fr: "Parrainages réussis et nombre de parrains. Les invitations envoyées ne sont pas enregistrées."
+    source_fr: "rctapi_minigame_referrals"
+    status: partial
+    source: "rctapi_minigame_referrals (converted only); invites/participation not tracked"
+
+  - id: partner_ad_impressions
+    label_fr: Impressions et vues uniques des pubs, par partenaire
+    category: mechanics
+    type: additive          # impressions additive; unique views are distinct
+    breakdowns: [partner_id]
+    measures: [impressions (additive), unique_viewers (distinct)]
+    definition_fr: "Pubs servies, vues complètes et joueurs distincts exposés, par partenaire."
+    source_fr: "rctapi_minigame_participation_ad_serves"
+    status: available
+    source: "rctapi_minigame_participation_ad_serves -> rctapi_minigame_ads.advertiser (normalize names)"
+
+  # ---------- Impact commercial ----------
+  - id: store_traffic
+    label_fr: Trafic en magasin
+    category: commercial
+    type: additive
+    definition: Identified store visits (transactions) by campaign players.
+    open: Players only, or total store traffic? Incremental vs. control?
+    definition_fr: "Visites en magasin des joueurs pendant la campagne."
+    source_fr: "Données des points de vente (POS) : non disponibles dans le MCP"
+    status: missing
+    source: "Not in MCP — needs POS data. Proxy: coupon activations"
+
+  - id: coupon_traffic_contribution
+    label_fr: Contribution des coupons au trafic
+    category: commercial
+    type: ratio
+    numerator: visits with ≥1 campaign coupon redeemed
+    denominator: store_traffic
+    definition_fr: "Visites avec au moins un coupon de la campagne ÷ trafic en magasin. Seul le numérateur est disponible."
+    source_fr: "rctapi_promotion_activations ; dénominateur POS manquant"
+    status: partial
+    source: "Numerator rctapi_promotion_activations; denominator (store traffic) missing"
+
+  - id: lift_revenue
+    label_fr: Revenus via LIFT
+    category: commercial
+    type: additive
+    open: Gross vs net of discounts, taxes excluded? Currency?
+    definition_fr: "Montant des achats LIFT rattachés au jeu par le numéro de téléphone saisi à la caisse."
+    source_fr: "rctapi_minigame_purchase_attributions"
+    status: partial
+    source: "rctapi_minigame_purchase_attributions event_type='LIFT' (only game-attributed purchases, no store)"
+
+  - id: lift_transactions
+    label_fr: Transactions LIFT
+    category: commercial
+    type: additive
+    definition_fr: "Transactions LIFT rattachées au jeu."
+    source_fr: "rctapi_minigame_purchase_attributions"
+    status: partial
+    source: "rctapi_minigame_purchase_attributions event_type='LIFT'"
+
+  - id: avg_spend_per_transaction
+    label_fr: Dépense moyenne par transaction
+    category: commercial
+    type: ratio
+    numerator: lift_revenue
+    denominator: lift_transactions
+    definition_fr: "Revenus LIFT ÷ transactions LIFT."
+    source_fr: "rctapi_minigame_purchase_attributions"
+    status: partial
+    source: "rctapi_minigame_purchase_attributions: SUM(total_price)/COUNT(*)"
+
+  - id: items_per_basket
+    label_fr: Articles dans le panier
+    category: commercial
+    type: ratio
+    numerator: items sold in LIFT transactions
+    denominator: lift_transactions
+    definition_fr: "Articles par transaction LIFT."
+    source_fr: "rctapi_minigame_purchase_attributions"
+    status: partial
+    source: "rctapi_minigame_purchase_attributions: AVG(item_count)"
+
+# Complementary indicators (beyond the 23 contract KPIs). All verified against the data on 2026-10-05.
+extras:
+  - id: player_funnel
+    label_fr: Entonnoir des joueurs
+    definition_fr: "Joueurs inscrits pendant la campagne → ont joué au moins une partie → ont gagné au moins un prix → ont échangé au moins un prix. Les téléchargements ne sont pas reliés aux joueurs et restent hors de l'entonnoir."
+    source_fr: "rctapi_minigame_players, rctapi_rpp_game_sessions, rctapi_promotion_grant, rctapi_promotion_activations (sql/kpi/13)"
+    status: available
+  - id: retention_cohorts
+    label_fr: Rétention J1, J7, J30
+    definition_fr: "Part des joueurs qui ont rejoué exactement 1, 7 ou 30 jours après leur première partie, par semaine de première partie. Seuls les joueurs dont le jour N tombe avant la fin du jeu sont comptés."
+    source_fr: "rctapi_rpp_game_sessions (sql/kpi/14)"
+    status: available
+  - id: prize_gifts
+    label_fr: Prix offerts à un ami
+    definition_fr: "Prix gagnés transférés à une autre personne pendant la campagne : envoyés, réclamés, expirés, en attente."
+    source_fr: "rctapi_minigame_prize_transfers (sql/kpi/15)"
+    status: available
+  - id: play_heatmap
+    label_fr: Carte de chaleur des parties
+    definition_fr: "Parties commencées par jour de la semaine et par heure, en heure de l'Est."
+    source_fr: "rctapi_rpp_game_sessions.started_at (sql/kpi/16)"
+    status: available
+  - id: play_streaks
+    label_fr: Séries de jours consécutifs
+    definition_fr: "Plus longue suite de jours de jeu consécutifs par joueur, recalculée à partir des parties. Le champ longest_streak de la base n'est pas utilisé : il contient des valeurs impossibles (jusqu'à 57 jours pour une campagne de 56 jours)."
+    source_fr: "rctapi_rpp_game_sessions (sql/kpi/17)"
+    status: available
+  - id: consents
+    label_fr: Consentements SMS et courriel
+    definition_fr: "Participations au jeu avec consentement SMS, courriel, les deux, ou au moins un. Ce que chaque consentement permet doit être confirmé avant de parler de base marketing."
+    source_fr: "rctapi_minigame_participations (sql/kpi/18)"
+    status: partial

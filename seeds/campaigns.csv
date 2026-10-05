@@ -1,0 +1,3 @@
+edition_id,code,name_fr,name_en,game_type,start_at_local,end_at_local,redemption_end_at_local,timezone,fiscal_year,promotion_campaign,purchase_campaign_id,comparison_edition_id,status
+1,rpp-2026,RPP 2026,RPP 2026,rpp,2026-07-21 00:00:00,2026-09-14 23:59:59,2026-09-19 23:59:59,America/Toronto,FY27,rpp-2026,rpp-2026,,closed
+,31dock,31DOCK,31DOCK,TBD,TBD,TBD,TBD,America/Toronto,TBD,TBD,TBD,,planned

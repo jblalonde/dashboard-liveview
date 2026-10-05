@@ -1,0 +1,165 @@
+<title>Rapport de campagne Minijeux</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Public+Sans:wght@400;500;600;700&display=swap">
+<style>
+/*__STYLES__*/
+</style>
+
+<header class="bar" id="top">
+  <div class="bar-row">
+    <div class="title">
+      <span class="eyebrow">Rapport de campagne</span>
+      <label class="campaign-pick">
+        <span class="sr">Campagne</span>
+        <select id="f-campaign"></select>
+      </label>
+    </div>
+    <div class="status">
+      <span class="dot" id="freshness-dot"></span>
+      <span id="freshness-text" role="status" aria-live="polite">Chargement…</span>
+    </div>
+    <div class="actions">
+      <button type="button" class="btn btn-wrap" id="btn-wrap" hidden>Voir le bilan</button>
+      <button type="button" class="btn" id="btn-refresh" hidden>Actualiser</button>
+      <details class="menu" id="export-menu" hidden>
+        <summary class="btn">Exporter</summary>
+        <div class="menu-list" role="menu">
+          <button type="button" role="menuitem" id="btn-export-kpi">KPI affichés (CSV)</button>
+          <button type="button" role="menuitem" id="btn-export-data">Données détaillées (CSV)</button>
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <form class="filters" id="filters" aria-label="Filtres">
+    <label class="f">
+      <span>Période</span>
+      <select id="f-period"></select>
+    </label>
+    <div class="f custom" id="custom-range" hidden>
+      <label><span>Du</span><input type="date" id="f-from"></label>
+      <label><span>Au</span><input type="date" id="f-to"></label>
+    </div>
+    <label class="f">
+      <span>BU</span>
+      <select id="f-region"></select>
+    </label>
+    <label class="f">
+      <span>Bannière</span>
+      <select id="f-banner">
+        <option value="all">Toutes</option>
+        <option value="Couche-Tard">Couche-Tard</option>
+        <option value="Circle K">Circle K</option>
+      </select>
+    </label>
+    <label class="f">
+      <span>Comparer à</span>
+      <select id="f-compare">
+        <option value="prev">Période précédente</option>
+        <option value="fy">FY26</option>
+      </select>
+    </label>
+    <span class="range-note" id="range-note"></span>
+  </form>
+
+  <nav class="tabs" role="tablist" aria-label="Sections" id="tabs">
+    <button type="button" role="tab" id="tab-overview" aria-controls="panel-overview" aria-selected="true">Vue d'ensemble</button>
+    <button type="button" role="tab" id="tab-audience" aria-controls="panel-audience" aria-selected="false">Audience</button>
+    <button type="button" role="tab" id="tab-prix" aria-controls="panel-prix" aria-selected="false">Prix</button>
+    <button type="button" role="tab" id="tab-mecaniques" aria-controls="panel-mecaniques" aria-selected="false">Mécaniques</button>
+    <button type="button" role="tab" id="tab-commercial" aria-controls="panel-commercial" aria-selected="false">Commercial</button>
+    <button type="button" role="tab" id="tab-definitions" aria-controls="panel-definitions" aria-selected="false">Définitions</button>
+  </nav>
+</header>
+
+<div class="notice" id="page-msg" hidden></div>
+
+<main class="page">
+  <section class="panel" id="panel-overview" role="tabpanel" aria-labelledby="tab-overview">
+    <div class="hero" id="hero"></div>
+    <div class="kpis" id="kpis-overview"></div>
+    <div class="split">
+      <figure class="card" id="card-trend"></figure>
+      <figure class="card" id="card-bu"></figure>
+    </div>
+    <figure class="card" id="card-funnel"></figure>
+    <div class="card attention" id="attention"></div>
+  </section>
+
+  <section class="panel" id="panel-audience" role="tabpanel" aria-labelledby="tab-audience" hidden>
+    <div class="kpis" id="kpis-audience"></div>
+    <figure class="card" id="card-active"></figure>
+    <div class="split even">
+      <figure class="card" id="card-signups"></figure>
+      <figure class="card" id="card-downloads"></figure>
+    </div>
+    <figure class="card" id="card-retention"></figure>
+    <div class="split even">
+      <figure class="card" id="card-streaks"></figure>
+      <figure class="card" id="card-heatmap"></figure>
+    </div>
+  </section>
+
+  <section class="panel" id="panel-prix" role="tabpanel" aria-labelledby="tab-prix" hidden>
+    <div class="kpis" id="kpis-prix"></div>
+    <figure class="card" id="card-prizes-daily"></figure>
+    <figure class="card" id="card-pacing"></figure>
+    <div class="split even">
+      <figure class="card" id="card-entries"></figure>
+      <figure class="card" id="card-gifts"></figure>
+    </div>
+  </section>
+
+  <section class="panel" id="panel-mecaniques" role="tabpanel" aria-labelledby="tab-mecaniques" hidden>
+    <div class="kpis" id="kpis-mecaniques"></div>
+    <div class="split even">
+      <figure class="card" id="card-bonus"></figure>
+      <figure class="card" id="card-badges"></figure>
+    </div>
+    <div class="split even">
+      <figure class="card" id="card-ads"></figure>
+      <figure class="card" id="card-consents"></figure>
+    </div>
+  </section>
+
+  <section class="panel" id="panel-commercial" role="tabpanel" aria-labelledby="tab-commercial" hidden>
+    <div class="kpis" id="kpis-commercial"></div>
+    <div class="split even">
+      <figure class="card" id="card-coupons"></figure>
+      <figure class="card" id="card-lift"></figure>
+    </div>
+  </section>
+
+  <section class="panel" id="panel-definitions" role="tabpanel" aria-labelledby="tab-definitions" hidden>
+    <div class="card"><div class="table-wrap"><table class="data" id="def-table"></table></div></div>
+  </section>
+</main>
+
+<footer class="foot">
+  <span>Données agrégées seulement. Aucune donnée personnelle n'est affichée ni exportée.</span>
+</footer>
+
+<div class="tip" id="tip" role="tooltip" hidden></div>
+
+<div class="wrap" id="wrap" role="dialog" aria-modal="true" aria-label="Bilan de campagne" hidden>
+  <div class="wrap-frame" id="wrap-frame">
+    <div class="wrap-progress" id="wrap-progress" aria-hidden="true"></div>
+    <div class="wrap-top">
+      <span class="wrap-brand" id="wrap-brand">Bilan</span>
+      <div class="wrap-top-actions">
+        <button type="button" class="wrap-icon" id="wrap-pause" aria-label="Mettre en pause">Pause</button>
+        <button type="button" class="wrap-icon" id="wrap-close" aria-label="Fermer le bilan">Fermer</button>
+      </div>
+    </div>
+    <div class="wrap-stage" id="wrap-stage" aria-live="polite"></div>
+    <button type="button" class="wrap-nav prev" id="wrap-prev" aria-label="Écran précédent"></button>
+    <button type="button" class="wrap-nav next" id="wrap-next" aria-label="Écran suivant"></button>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/echarts@6.1.0/dist/echarts.min.js"></script>
+<script id="report-data" type="application/json">/*__DATA__*/</script>
+<script>
+/*__APP__*/
+</script>
