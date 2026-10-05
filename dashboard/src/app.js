@@ -14,17 +14,16 @@
 
   const REGION_ORDER = ['ATL', 'QC', 'CC', 'WC'];
   const REGION_LABEL = { ATL: 'Atlantique', QC: 'Québec', CC: 'Centre', WC: 'Ouest', UNASSIGNED: 'Non attribué' };
-  const REGION_SLOT = { ATL: 1, QC: 2, CC: 3, WC: 4 };
+  const REGION_VAR = { ATL: '--r-atl', QC: '--r-qc', CC: '--r-cc', WC: '--r-wc' };
   const REGION_META = {};
-  for (const r of DATA.regions) {
-    REGION_META[r.region_code] = { banner: r.banner_default, rollup: r.client_rollup, name: r.region_name };
-  }
-  const REGION_CHIPS = [
-    { id: 'all', label: 'Toutes', regions: REGION_ORDER },
+  for (const r of DATA.regions) REGION_META[r.region_code] = { banner: r.banner_default, rollup: r.client_rollup };
+  const REGION_OPTIONS = [
+    { id: 'all', label: 'Toutes les BU', regions: REGION_ORDER },
     { id: 'Eastern', label: 'Eastern (ATL + QC)', regions: ['ATL', 'QC'] },
-    ...REGION_ORDER.map((c) => ({ id: c, label: `${c} · ${REGION_LABEL[c]}`, regions: [c], slot: REGION_SLOT[c] })),
+    ...REGION_ORDER.map((c) => ({ id: c, label: `${c} · ${REGION_LABEL[c]}`, regions: [c] })),
   ];
   const KPI_DEF = Object.fromEntries(DATA.kpis.map((k) => [k.id, k]));
+  const TABS = ['overview', 'audience', 'prix', 'mecaniques', 'commercial', 'definitions'];
 
   // ---------------------------------------------------------------------------
   // Formatting
@@ -36,16 +35,20 @@
   const money = new Intl.NumberFormat('fr-CA', { style: 'currency', currency: 'CAD', maximumFractionDigits: 0 });
   const money2 = new Intl.NumberFormat('fr-CA', { style: 'currency', currency: 'CAD' });
   const dayFmt = new Intl.DateTimeFormat('fr-CA', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+  const dayLong = new Intl.DateTimeFormat('fr-CA', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
   const stampFmt = new Intl.DateTimeFormat('fr-CA', { dateStyle: 'long', timeStyle: 'short', timeZone: 'America/Toronto' });
   const FMT = {
     int: (v) => nf.format(v),
     dec1: (v) => nf1.format(v),
     dec2: (v) => nf2.format(v),
     pct: (v) => `${nf1.format(v * 100)} %`,
+    pct0: (v) => `${nf.format(v * 100)} %`,
     money: (v) => money.format(v),
     money2: (v) => money2.format(v),
+    short: (v) => (Math.abs(v) >= 10000 ? compact.format(v) : nf.format(v)),
   };
   const fmtDay = (iso) => dayFmt.format(new Date(`${iso}T00:00:00Z`));
+  const fmtDayLong = (iso) => dayLong.format(new Date(`${iso}T00:00:00Z`));
 
   // ---------------------------------------------------------------------------
   // Date helpers (ISO yyyy-mm-dd, calendar days, no timezone drift)
@@ -56,6 +59,10 @@
   const diffDays = (a, b) => Math.round((toDate(b) - toDate(a)) / 86400000);
   const mondayOf = (iso) => { const d = toDate(iso); const wd = (d.getUTCDay() + 6) % 7; return addDays(iso, -wd); };
   const localDate = (utcIso, tz) => new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date(utcIso));
+  const todayIn = (tz) => new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date());
+  const minIso = (a, b) => (a < b ? a : b);
+  const maxIso = (a, b) => (a > b ? a : b);
+  function eachDay(d0, d1) { const out = []; for (let d = d0; d <= d1; d = addDays(d, 1)) out.push(d); return out; }
 
   // ---------------------------------------------------------------------------
   // Campaign registry: seeds/campaigns.csv until rctapi_minigame_editions exists
@@ -68,6 +75,7 @@
       editionId: has(r.edition_id) ? Number(r.edition_id) : null,
       start: has(r.start_at_local) ? r.start_at_local.slice(0, 10) : null,
       end: has(r.end_at_local) ? r.end_at_local.slice(0, 10) : null,
+      redemptionEnd: has(r.redemption_end_at_local) ? r.redemption_end_at_local.slice(0, 10) : (has(r.end_at_local) ? r.end_at_local.slice(0, 10) : null),
       startLocal: r.start_at_local,
       endLocal: r.end_at_local,
       redemptionEndLocal: has(r.redemption_end_at_local) ? r.redemption_end_at_local : r.end_at_local,
@@ -82,12 +90,14 @@
   }
   function campaignFromTable(r) {
     const tz = r.timezone || 'America/Toronto';
+    const end = r.end_at ? localDate(r.end_at, tz) : null;
     return {
       code: r.code,
       name: r.name_fr || r.code,
       editionId: r.id,
       start: r.start_at ? localDate(r.start_at, tz) : null,
-      end: r.end_at ? localDate(r.end_at, tz) : null,
+      end,
+      redemptionEnd: r.redemption_end_at ? localDate(r.redemption_end_at, tz) : end,
       tz,
       fiscalYear: r.fiscal_year || null,
       promotionCampaign: r.promotion_campaign || '',
@@ -126,8 +136,8 @@
   }
   const buildSql = (qid, c) => `-- report:${qid}\n` + DATA.queries[qid].sql.replace('{{CAMPAIGN}}', campaignCte(c));
 
-  const EDITIONS_SQL = `SELECT id, code, name_fr, start_at, end_at, timezone, fiscal_year, promotion_campaign,
-       purchase_campaign_id, comparison_edition_id, status
+  const EDITIONS_SQL = `SELECT id, code, name_fr, start_at, end_at, redemption_end_at, timezone, fiscal_year,
+       promotion_campaign, purchase_campaign_id, comparison_edition_id, status
 FROM rctapi_minigame_editions WHERE deleted_at IS NULL ORDER BY start_at DESC`;
 
   // ---------------------------------------------------------------------------
@@ -166,7 +176,6 @@ FROM rctapi_minigame_editions WHERE deleted_at IS NULL ORDER BY start_at DESC`;
       const parts = line.split('|');
       if (parts.length < cols.length) continue;
       if (parts.length > cols.length) {
-        // A '|' inside a text value: fold the surplus back into the widest text column.
         const extra = parts.splice(cols.length - 1);
         parts.push(extra.join('|'));
       }
@@ -185,12 +194,16 @@ FROM rctapi_minigame_editions WHERE deleted_at IS NULL ORDER BY start_at DESC`;
     registrySource: 'seed',
     campaign: null,
     period: 'all',
+    custom: null,       // { d0, d1 } for the custom range
     compare: 'prev',
-    regionChip: 'all',
+    region: 'all',
     banner: 'all',
-    results: {},       // code -> qid -> { rows, storedAt, ms }
-    errors: {},        // code -> qid -> message
-    meta: {},          // code -> { refreshedAt }
+    tab: 'overview',
+    activeSplit: false, // Audience chart: total vs per BU
+    openTables: new Set(),
+    results: {},
+    errors: {},
+    meta: {},
     busy: false,
     progress: null,
   };
@@ -209,38 +222,67 @@ FROM rctapi_minigame_editions WHERE deleted_at IS NULL ORDER BY start_at DESC`;
   state.campaign = pickDefaultCampaign();
 
   function activeRegions() {
-    const chip = REGION_CHIPS.find((c) => c.id === state.regionChip) || REGION_CHIPS[0];
-    return chip.regions.filter((r) => state.banner === 'all' || REGION_META[r]?.banner === state.banner);
+    const opt = REGION_OPTIONS.find((o) => o.id === state.region) || REGION_OPTIONS[0];
+    return opt.regions.filter((r) => state.banner === 'all' || REGION_META[r]?.banner === state.banner);
   }
   const allRegionsSelected = () => activeRegions().length === REGION_ORDER.length;
 
-  // Period = whole campaign or one Monday-based week (same weeks as sql/kpi/03).
-  function periodOptions(c) {
-    if (!isReady(c)) return [];
-    const opts = [{ id: 'all', kind: 'all', d0: c.start, d1: c.end, label: `Campagne complète · ${fmtDay(c.start)} – ${fmtDay(c.end)}` }];
+  // ---------------------------------------------------------------------------
+  // Periods: whole campaign, last 7 days, Monday-based weeks (same weeks as
+  // sql/kpi/03), or any custom range inside the campaign.
+  // ---------------------------------------------------------------------------
+  function weeksOf(c) {
+    const out = [];
     let w = mondayOf(c.start);
     let n = 1;
     while (w <= c.end) {
-      const d0 = w < c.start ? c.start : w;
-      const d1 = addDays(w, 6) > c.end ? c.end : addDays(w, 6);
-      opts.push({ id: `w${n}`, kind: 'week', week: w, n, d0, d1, label: `Semaine ${n} · ${fmtDay(d0)} – ${fmtDay(d1)}` });
+      out.push({ id: `w${n}`, week: w, n, d0: maxIso(w, c.start), d1: minIso(addDays(w, 6), c.end) });
       w = addDays(w, 7);
       n += 1;
     }
+    return out;
+  }
+  // Give any range its most precise kind, so a custom range equal to a week or
+  // to the whole campaign gets the exact unique-player figures.
+  function classify(c, d0, d1) {
+    if (d0 <= c.start && d1 >= c.end) return { kind: 'all', d0: c.start, d1: c.end };
+    const w = weeksOf(c).find((x) => x.d0 === d0 && x.d1 === d1);
+    if (w) return { kind: 'week', week: w.week, d0, d1 };
+    return { kind: 'custom', d0, d1 };
+  }
+  function periodOptions(c) {
+    if (!isReady(c)) return [];
+    const last = minIso(todayIn(c.tz), c.end);
+    const opts = [
+      { id: 'all', label: 'Toute la campagne' },
+      { id: 'last7', label: '7 derniers jours', d0: maxIso(addDays(last, -6), c.start), d1: last },
+      ...weeksOf(c).map((w) => ({ id: w.id, label: `Semaine ${w.n} · ${fmtDay(w.d0)} – ${fmtDay(w.d1)}`, d0: w.d0, d1: w.d1 })),
+      { id: 'custom', label: 'Personnalisée…' },
+    ];
     return opts;
   }
   function currentRange() {
     const c = currentCampaign();
-    return periodOptions(c).find((p) => p.id === state.period) || periodOptions(c)[0] || null;
+    if (!isReady(c)) return null;
+    const opt = periodOptions(c).find((p) => p.id === state.period) || { id: 'all' };
+    let d0 = c.start;
+    let d1 = c.end;
+    if (opt.id === 'custom' && state.custom) { d0 = maxIso(state.custom.d0, c.start); d1 = minIso(state.custom.d1, c.end); }
+    else if (opt.d0) { d0 = opt.d0; d1 = opt.d1; }
+    if (d1 < d0) d1 = d0;
+    const rg = classify(c, d0, d1);
+    // Coupons can be redeemed after play ends: the whole campaign counts them too.
+    rg.redeemD1 = rg.kind === 'all' ? (c.redemptionEnd || c.end) : rg.d1;
+    rg.label = rg.kind === 'all' ? 'Toute la campagne' : `${fmtDay(rg.d0)} – ${fmtDay(rg.d1)}`;
+    return rg;
   }
 
   // ---------------------------------------------------------------------------
   // KPI engine. Each KPI computes from one campaign's results for a range of
-  // campaign days and a set of regions; comparisons reuse the same function.
+  // days and a set of regions; comparisons reuse the same function.
   // ---------------------------------------------------------------------------
   const rowsOf = (res, qid) => res?.[qid]?.rows || null;
   const sum = (rows, f) => rows.reduce((a, r) => a + (Number(typeof f === 'function' ? f(r) : r[f]) || 0), 0);
-  const inRange = (day, rg) => day >= rg.d0 && day <= rg.d1;
   function regionFilter(rows, regions, allowUnassigned) {
     return rows.filter((r) => regions.includes(r.region_code) || (allowUnassigned && r.region_code === 'UNASSIGNED'));
   }
@@ -248,119 +290,124 @@ FROM rctapi_minigame_editions WHERE deleted_at IS NULL ORDER BY start_at DESC`;
     const rows = rowsOf(res, qid);
     if (!rows) return null;
     const scoped = opts.noRegion ? rows : regionFilter(rows, regions, opts.allowUnassigned);
-    return scoped.filter((r) => inRange(r.day, rg));
+    const d1 = opts.redeem ? rg.redeemD1 || rg.d1 : rg.d1;
+    return scoped.filter((r) => r.day >= rg.d0 && r.day <= d1);
   }
-  function overlapsCampaign(rg, c) { return rg.d1 >= c.start && rg.d0 <= c.end; }
+  const overlapsCampaign = (rg, c) => rg.d1 >= c.start && rg.d0 <= c.end;
   const ratio = (a, b) => (b ? a / b : null);
+  const NEEDS_EXACT = 'Disponible pour toute la campagne ou une semaine';
 
   function appKeys() {
     if (state.banner === 'Couche-Tard') return ['couche_tard_ios', 'couche_tard_android'];
     if (state.banner === 'Circle K') return ['circle_k_ios', 'circle_k_android'];
     return ['couche_tard_ios', 'couche_tard_android', 'circle_k_ios', 'circle_k_android'];
   }
+  const downloadsOf = (r) => appKeys().reduce((a, k) => a + (r[k] || 0), 0);
 
-  // scope: 'period' follows the period filter; 'campaign' = whole campaign only; 'stock' = as of today.
+  // scope: 'period' follows the period filter; 'campaign' = whole-campaign total; 'stock' = as of today.
   const KPIS = [
-    // Audience et engagement
-    { id: 'paid_app_installs', section: 'audience', label: "Téléchargements d'app", fmt: 'int', scope: 'period', noRegion: true,
-      note: 'Toutes provenances. Les téléchargements ne sont pas encore attribués au média payant.',
-      calc: (x) => { const rows = daily(x.res, 'q12', x.rg, x.regions, { noRegion: true }); return rows && sum(rows, (r) => appKeys().reduce((a, k) => a + (r[k] || 0), 0)); },
-      allowBeforeStart: true },
+    { id: 'paid_app_installs', section: 'audience', label: "Téléchargements d'app", fmt: 'int', scope: 'period', noRegion: true, allowBeforeStart: true,
+      note: "Toutes provenances : l'attribution au média payant n'est pas encore disponible. Non ventilé par BU.",
+      calc: (x) => { const rows = daily(x.res, 'q12', x.rg, x.regions, { noRegion: true }); return rows && sum(rows, downloadsOf); },
+      spark: (x) => ({ qid: 'q12', f: downloadsOf, noRegion: true }) },
     { id: 'signups', section: 'audience', label: 'Inscriptions', fmt: 'int', scope: 'period',
       calc: (x) => { const rows = daily(x.res, 'q01', x.rg, x.regions); return rows && sum(rows, 'signups'); } },
     { id: 'new_players', section: 'audience', label: 'Nouveaux joueurs aux jeux Circle K', fmt: 'int', scope: 'campaign',
       calc: (x) => { const rows = rowsOf(x.res, 'q02'); return rows && sum(regionFilter(rows, x.regions), 'new_to_ck_games'); } },
-    { id: 'unique_players', section: 'audience', label: 'Joueurs uniques', fmt: 'int', scope: 'period',
+    { id: 'unique_players', section: 'audience', label: 'Joueurs uniques', fmt: 'int', scope: 'period', exact: true,
       calc: (x) => {
         if (x.rg.kind === 'week') { const rows = rowsOf(x.res, 'q03'); return rows && sum(regionFilter(rows, x.regions).filter((r) => r.week_start === x.rg.week), 'wau'); }
-        const rows = rowsOf(x.res, 'q02'); return rows && sum(regionFilter(rows, x.regions), 'unique_players');
-      } },
-    { id: 'dau', section: 'audience', label: 'Utilisateurs actifs quotidiens (moy.)', fmt: 'int', scope: 'period',
+        if (x.rg.kind === 'all') { const rows = rowsOf(x.res, 'q02'); return rows && sum(regionFilter(rows, x.regions), 'unique_players'); }
+        return null;
+      },
+      spark: () => ({ qid: 'q01', f: (r) => r.active_players }) },
+    { id: 'dau', section: 'audience', label: 'Actifs par jour (moy.)', fmt: 'int', scope: 'period',
       calc: (x) => { const rows = daily(x.res, 'q01', x.rg, x.regions); if (!rows) return null; const days = new Set(rows.filter((r) => r.active_players > 0).map((r) => r.day)).size; return days ? sum(rows, 'active_players') / days : null; } },
-    { id: 'wau', section: 'audience', label: 'Utilisateurs actifs hebdomadaires (moy.)', fmt: 'int', scope: 'period',
+    { id: 'wau', section: 'audience', label: 'Actifs par semaine (moy.)', fmt: 'int', scope: 'period',
       calc: (x) => {
         const rows = rowsOf(x.res, 'q03'); if (!rows) return null;
         const scoped = regionFilter(rows, x.regions).filter((r) => r.week_start >= mondayOf(x.rg.d0) && r.week_start <= x.rg.d1);
         const weeks = [...new Set(scoped.map((r) => r.week_start))];
         return weeks.length ? sum(scoped, 'wau') / weeks.length : null;
       } },
-    { id: 'sessions_per_user', section: 'audience', label: 'Jours actifs par joueur', fmt: 'dec1', scope: 'period',
-      note: "Indicateur de remplacement : le jeu n'enregistre pas de sessions d'app, on compte les jours où le joueur a joué.",
+    { id: 'sessions_per_user', section: 'audience', label: 'Jours actifs par joueur', fmt: 'dec1', scope: 'period', exact: true,
+      note: "Remplace « sessions par utilisateur » : le jeu n'enregistre pas de sessions d'app, on compte les jours où chaque joueur a joué.",
       calc: (x) => {
         if (x.rg.kind === 'week') {
           const d = daily(x.res, 'q01', x.rg, x.regions); const w = rowsOf(x.res, 'q03');
           return d && w ? ratio(sum(d, 'active_players'), sum(regionFilter(w, x.regions).filter((r) => r.week_start === x.rg.week), 'wau')) : null;
         }
+        if (x.rg.kind !== 'all') return null;
         const rows = rowsOf(x.res, 'q02'); if (!rows) return null; const s = regionFilter(rows, x.regions);
         return ratio(sum(s, 'player_days'), sum(s, 'unique_players'));
       } },
     { id: 'repeat_visit_rate', section: 'audience', label: 'Taux de visites répétées', fmt: 'pct', scope: 'campaign', delta: 'pts',
       calc: (x) => { const rows = rowsOf(x.res, 'q02'); if (!rows) return null; const s = regionFilter(rows, x.regions); return ratio(sum(s, 'repeat_players'), sum(s, 'unique_players')); } },
     { id: 'games_played', section: 'audience', label: 'Parties jouées', fmt: 'int', scope: 'period',
-      calc: (x) => { const rows = daily(x.res, 'q01', x.rg, x.regions); return rows && sum(rows, 'games_played'); } },
+      calc: (x) => { const rows = daily(x.res, 'q01', x.rg, x.regions); return rows && sum(rows, 'games_played'); },
+      spark: () => ({ qid: 'q01', f: (r) => r.games_played }) },
 
-    // Prix et distribution
-    { id: 'instant_prizes_won', section: 'prix', label: 'Prix instantanés gagnés', fmt: 'int', scope: 'period',
+    { id: 'instant_prizes_won', section: 'prix', label: 'Prix gagnés', fmt: 'int', scope: 'period',
       calc: (x) => { const rows = daily(x.res, 'q05', x.rg, x.regions); return rows && sum(rows, 'won'); } },
-    { id: 'instant_prizes_redeemed', section: 'prix', label: 'Prix instantanés échangés', fmt: 'int', scope: 'period',
-      note: "Coupons activés en magasin, comptés à la date d'activation.",
-      calc: (x) => { const rows = daily(x.res, 'q11', x.rg, x.regions, { allowUnassigned: x.allRegions }); return rows && sum(rows, 'coupon_activations'); } },
+    { id: 'instant_prizes_redeemed', section: 'prix', label: 'Prix échangés', fmt: 'int', scope: 'period',
+      note: "Coupons activés en magasin, à la date d'activation. Toute la campagne inclut la période d'échange après la fin du jeu.",
+      calc: (x) => { const rows = daily(x.res, 'q11', x.rg, x.regions, { allowUnassigned: x.allRegions, redeem: true }); return rows && sum(rows, 'coupon_activations'); },
+      spark: () => ({ qid: 'q11', f: (r) => r.coupon_activations, redeem: true }) },
     { id: 'redemption_rate', section: 'prix', label: "Taux d'échange", fmt: 'pct', scope: 'campaign', delta: 'pts', extra: true,
       note: 'Prix échangés ÷ prix gagnés, sur toute la campagne.',
       calc: (x) => { const rows = rowsOf(x.res, 'q04'); if (!rows) return null; const s = regionFilter(rows, x.regions); return ratio(sum(s, 'redeemed'), sum(s, 'won')); } },
     { id: 'prizes_remaining', section: 'prix', label: 'Prix restants', fmt: 'int', scope: 'stock',
-      note: 'Inventaire − (gagnés − coupons non échangés remis en stock).',
+      note: "Inventaire moins les prix distribués. Les coupons non échangés à temps retournent dans l'inventaire.",
       calc: (x) => { const rows = rowsOf(x.res, 'q04'); return rows && sum(regionFilter(rows, x.regions), 'remaining'); } },
-    { id: 'distribution_pacing', section: 'prix', label: 'Rythme de distribution', fmt: 'pct', scope: 'stock', delta: 'pts',
-      note: 'Prix réellement distribués ÷ plan linéaire à date. Sous 90 % : sous-distribution ; au-dessus de 110 % : sur-distribution.',
+    { id: 'distribution_pacing', section: 'prix', label: 'Rythme de distribution', fmt: 'pct0', scope: 'stock', delta: 'pts',
+      note: 'Prix distribués ÷ plan linéaire à date. Sous 90 % : sous-distribution. Au-dessus de 110 % : sur-distribution.',
       calc: (x) => { const rows = rowsOf(x.res, 'q04'); if (!rows) return null; const s = regionFilter(rows, x.regions); return ratio(sum(s, 'net_awarded'), sum(s, 'planned_to_date')); },
-      status: (v) => paceStatus(v) },
+      state: (v) => paceStatus(v) },
     { id: 'grand_prize_entries', section: 'prix', label: 'Participations au grand prix', fmt: 'int', scope: 'period',
       calc: (x) => { const rows = daily(x.res, 'q06', x.rg, x.regions); return rows && sum(rows, 'entries'); } },
 
-    // Mécaniques de jeu
     { id: 'bonus_challenge_completions', section: 'mecaniques', label: 'Actions bonus complétées', fmt: 'int', scope: 'campaign',
       calc: (x) => { const rows = rowsOf(x.res, 'q07'); return rows && sum(regionFilter(rows, x.regions).filter((r) => r.kind === 'bonus_action'), 'completions'); } },
-    { id: 'badges_earned', section: 'mecaniques', label: 'Défis réussis (badges)', fmt: 'int', scope: 'campaign', kpiRef: 'bonus_challenge_completions', extra: true,
+    { id: 'badges_earned', section: 'mecaniques', label: 'Défis réussis', fmt: 'int', scope: 'campaign', kpiRef: 'bonus_challenge_completions', extra: true,
       calc: (x) => { const rows = rowsOf(x.res, 'q07'); return rows && sum(regionFilter(rows, x.regions).filter((r) => r.kind === 'badge'), 'completions'); } },
     { id: 'referrals', section: 'mecaniques', label: 'Parrainages réussis', fmt: 'int', scope: 'campaign',
       note: 'Seuls les parrainages convertis sont enregistrés ; les invitations envoyées ne le sont pas.',
       calc: (x) => { const rows = rowsOf(x.res, 'q08'); return rows && sum(regionFilter(rows, x.regions), 'successful_referrals'); } },
-    { id: 'referrers', section: 'mecaniques', label: 'Parrains actifs', fmt: 'int', scope: 'campaign', kpiRef: 'referrals', extra: true,
+    { id: 'referrers', section: 'mecaniques', label: 'Parrains', fmt: 'int', scope: 'campaign', kpiRef: 'referrals', extra: true,
       calc: (x) => { const rows = rowsOf(x.res, 'q08'); return rows && sum(regionFilter(rows, x.regions), 'referrers'); } },
     { id: 'partner_ad_impressions', section: 'mecaniques', label: 'Impressions publicitaires', fmt: 'int', scope: 'campaign',
       calc: (x) => { const rows = rowsOf(x.res, 'q09'); return rows && sum(regionFilter(rows, x.regions), 'impressions'); } },
     { id: 'ad_completed_views', section: 'mecaniques', label: 'Vues complètes des pubs', fmt: 'int', scope: 'campaign', kpiRef: 'partner_ad_impressions', extra: true,
       calc: (x) => { const rows = rowsOf(x.res, 'q09'); return rows && sum(regionFilter(rows, x.regions), 'completed_views'); } },
 
-    // Impact commercial
     { id: 'store_traffic', section: 'commercial', label: 'Trafic en magasin', fmt: 'int', scope: 'period', missing: true,
-      note: 'Nécessite les données des points de vente (POS), absentes du MCP.',
-      calc: () => null },
+      note: 'Nécessite les données des points de vente (POS), absentes du MCP.', calc: () => null },
     { id: 'coupon_traffic_contribution', section: 'commercial', label: 'Coupons activés en magasin', fmt: 'int', scope: 'period',
       note: 'Numérateur de la contribution des coupons au trafic. Le dénominateur (trafic total) attend les données POS.',
-      calc: (x) => { const rows = daily(x.res, 'q11', x.rg, x.regions, { allowUnassigned: x.allRegions }); return rows && sum(rows, 'coupon_activations'); } },
+      calc: (x) => { const rows = daily(x.res, 'q11', x.rg, x.regions, { allowUnassigned: x.allRegions, redeem: true }); return rows && sum(rows, 'coupon_activations'); } },
     { id: 'lift_revenue', section: 'commercial', label: 'Revenus via LIFT', fmt: 'money', scope: 'period',
-      note: 'Achats rattachés au jeu par le numéro de téléphone à la caisse, pas le revenu LIFT total.',
+      note: 'Achats rattachés au jeu par le numéro de téléphone saisi à la caisse, pas le revenu LIFT total.',
       calc: (x) => { const rows = daily(x.res, 'q10', x.rg, x.regions); return rows && sum(rows, 'lift_revenue'); } },
     { id: 'lift_transactions', section: 'commercial', label: 'Transactions LIFT', fmt: 'int', scope: 'period',
       calc: (x) => { const rows = daily(x.res, 'q10', x.rg, x.regions); return rows && sum(rows, 'lift_transactions'); } },
-    { id: 'avg_spend_per_transaction', section: 'commercial', label: 'Dépense moyenne par transaction', fmt: 'money2', scope: 'period',
+    { id: 'avg_spend_per_transaction', section: 'commercial', label: 'Dépense moyenne', fmt: 'money2', scope: 'period',
       calc: (x) => { const rows = daily(x.res, 'q10', x.rg, x.regions); return rows && ratio(sum(rows, 'lift_revenue'), sum(rows, 'lift_transactions')); } },
-    { id: 'items_per_basket', section: 'commercial', label: 'Articles dans le panier', fmt: 'dec1', scope: 'period',
+    { id: 'items_per_basket', section: 'commercial', label: 'Articles par panier', fmt: 'dec1', scope: 'period',
       calc: (x) => { const rows = daily(x.res, 'q10', x.rg, x.regions); return rows && ratio(sum(rows, 'items'), sum(rows, 'lift_transactions')); } },
   ];
+  const KPI = Object.fromEntries(KPIS.map((k) => [k.id, k]));
+  const OVERVIEW_HERO = ['unique_players', 'games_played', 'instant_prizes_redeemed', 'paid_app_installs'];
+  const OVERVIEW_MORE = ['signups', 'repeat_visit_rate', 'distribution_pacing', 'lift_revenue'];
 
   function paceStatus(v) {
     if (v == null) return null;
-    if (v < 0.9) return { cls: 'st-under', label: 'Sous-distribution' };
-    if (v > 1.1) return { cls: 'st-over', label: 'Sur-distribution' };
-    return { cls: 'st-ok', label: 'Dans le plan' };
+    if (v < 0.9) return { cls: 'under', label: 'Sous le plan' };
+    if (v > 1.1) return { cls: 'over', label: 'Au-dessus du plan' };
+    return { cls: 'ok', label: 'Dans le plan' };
   }
   function sourceStatus(k) {
     if (k.missing) return 'missing';
-    const def = KPI_DEF[k.kpiRef || k.id];
-    return def?.status || 'available';
+    return KPI_DEF[k.kpiRef || k.id]?.status || 'available';
   }
 
   function computeKpi(k, res, camp, rg, regions) {
@@ -374,28 +421,41 @@ FROM rctapi_minigame_editions WHERE deleted_at IS NULL ORDER BY start_at DESC`;
     }
   }
 
-  // Comparison range for the current selection, or a reason it is unavailable.
+  // Comparison for the current selection: { camp, res, rg, label } or { na }.
   function comparisonFor(k, camp, rg) {
     if (state.compare === 'prev') {
-      if (k.scope === 'campaign') return { na: 'Total de campagne : comparable à FY26 seulement' };
-      if (k.scope === 'stock') return { na: 'Stock à ce jour : comparable à FY26 seulement' };
+      if (k.scope !== 'period') return { na: 'total' };
       const len = diffDays(rg.d0, rg.d1) + 1;
-      const prev = { kind: rg.kind, d0: addDays(rg.d0, -len), d1: addDays(rg.d0, -1) };
-      if (rg.kind === 'week') prev.week = addDays(rg.week, -7);
-      if (!k.allowBeforeStart && prev.d1 < camp.start) return { na: 'Pas de période précédente' };
-      return { camp, res: state.results[camp.code], rg: prev, label: rg.kind === 'week' ? 'vs semaine précédente' : `vs ${len} jours avant le lancement` };
+      const prev = classify(camp, addDays(rg.d0, -len), addDays(rg.d0, -1));
+      if (rg.kind === 'week') { prev.kind = 'week'; prev.week = addDays(rg.week, -7); }
+      if (rg.kind === 'all') prev.kind = 'before';
+      prev.redeemD1 = prev.d1;
+      // A previous window that starts before launch would compare against a partial period.
+      if (!k.allowBeforeStart && prev.d0 < camp.start) return { na: 'none' };
+      const label = rg.kind === 'week' ? 'vs semaine préc.' : rg.kind === 'all' ? `vs ${len} j avant le lancement` : `vs ${len} j précédents`;
+      return { camp, res: state.results[camp.code], rg: prev, label };
     }
     const fy = comparisonCampaign(camp);
-    if (!fy) return { na: 'Aucune édition FY26 comparable' };
+    if (!fy) return { na: 'nofy' };
     const res = state.results[fy.code];
-    if (!res) return { na: `${fy.name} : données non chargées` };
-    if (k.scope === 'stock') return { camp: fy, res, rg: { kind: 'all', d0: fy.start, d1: fy.end }, label: `vs ${fy.name}` };
-    // Align on campaign day: same offsets from each campaign's launch.
+    if (!res) return { na: 'fynodata', name: fy.name };
+    if (k.scope !== 'period') return { camp: fy, res, rg: { kind: 'all', d0: fy.start, d1: fy.end, redeemD1: fy.redemptionEnd }, label: `vs ${fy.name}` };
     const o0 = diffDays(camp.start, rg.d0);
     const o1 = diffDays(camp.start, rg.d1);
-    const frg = { kind: rg.kind, d0: addDays(fy.start, o0), d1: addDays(fy.start, Math.min(o1, diffDays(fy.start, fy.end))) };
-    if (rg.kind === 'week') frg.week = mondayOf(frg.d0);
-    return { camp: fy, res, rg: frg, label: `vs ${fy.name} (mêmes jours de campagne)` };
+    const frg = classify(fy, addDays(fy.start, o0), addDays(fy.start, Math.min(o1, diffDays(fy.start, fy.end))));
+    frg.redeemD1 = rg.kind === 'all' ? fy.redemptionEnd : frg.d1;
+    return { camp: fy, res, rg: frg, label: `vs ${fy.name}` };
+  }
+
+  function kpiValue(k) {
+    const camp = currentCampaign();
+    const rg = currentRange();
+    const regions = activeRegions();
+    const res = state.results[camp?.code];
+    const value = computeKpi(k, res, camp, rg, regions);
+    const cmpInfo = camp && rg ? comparisonFor(k, camp, rg) : { na: 'none' };
+    const cmp = cmpInfo.na ? null : computeKpi(k, cmpInfo.res, cmpInfo.camp, cmpInfo.rg, regions);
+    return { k, value, cmp, cmpInfo, loaded: !!res, rg };
   }
 
   // ---------------------------------------------------------------------------
@@ -407,21 +467,18 @@ FROM rctapi_minigame_editions WHERE deleted_at IS NULL ORDER BY start_at DESC`;
     for (const [k, v] of Object.entries(attrs)) {
       if (v == null || v === false) continue;
       if (k === 'class') node.className = v;
-      else if (k === 'text') node.textContent = v;
+      else if (k === 'style') node.setAttribute('style', v);
       else if (k.startsWith('on')) node.addEventListener(k.slice(2), v);
       else node.setAttribute(k, v === true ? '' : v);
     }
-    for (const c of children.flat()) if (c != null) node.append(c instanceof Node ? c : document.createTextNode(String(c)));
+    for (const c of children.flat()) if (c != null && c !== false) node.append(c instanceof Node ? c : document.createTextNode(String(c)));
     return node;
   }
-  function pillFor(status, tip) {
-    if (status === 'partial') return el('span', { class: 'pill partial', tabindex: 0, 'data-tip': tip || 'Donnée partielle' }, 'Partiel');
-    if (status === 'missing') return el('span', { class: 'pill missing', tabindex: 0, 'data-tip': tip || 'Source de données manquante' }, 'Source manquante');
-    return null;
-  }
+  const svgEl = (tag, attrs = {}) => { const n = document.createElementNS('http://www.w3.org/2000/svg', tag); for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v); return n; };
   function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+  const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-  // Tooltip for [data-tip] (pills, notes)
+  // Tooltip for [data-tip]
   const tip = $('tip');
   function showTip(target) {
     const text = target.getAttribute('data-tip');
@@ -430,9 +487,9 @@ FROM rctapi_minigame_editions WHERE deleted_at IS NULL ORDER BY start_at DESC`;
     tip.hidden = false;
     const r = target.getBoundingClientRect();
     const tw = Math.min(300, window.innerWidth - 24);
-    let left = Math.min(Math.max(12, r.left), window.innerWidth - tw - 12);
+    const left = Math.min(Math.max(12, r.left - 8), window.innerWidth - tw - 12);
     let top = r.bottom + 8;
-    if (top + 80 > window.innerHeight) top = r.top - tip.offsetHeight - 8;
+    if (top + tip.offsetHeight + 8 > window.innerHeight) top = r.top - tip.offsetHeight - 8;
     tip.style.left = `${left}px`;
     tip.style.top = `${top}px`;
   }
@@ -444,179 +501,241 @@ FROM rctapi_minigame_editions WHERE deleted_at IS NULL ORDER BY start_at DESC`;
   window.addEventListener('scroll', hideTip, { passive: true });
 
   // ---------------------------------------------------------------------------
-  // Filters UI
+  // Filters and tabs
   // ---------------------------------------------------------------------------
   function renderFilters() {
-    const sel = $('f-campaign');
-    sel.replaceChildren(...state.campaigns.map((c) => el('option', { value: c.code, selected: c.code === state.campaign, disabled: !isReady(c) },
-      isReady(c) ? `${c.name}${c.status === 'live' ? ' · en cours' : ''}` : `${c.name} · à configurer`)));
-    const periods = periodOptions(currentCampaign());
+    const camp = currentCampaign();
+    $('f-campaign').replaceChildren(...state.campaigns.map((c) => el('option', { value: c.code, selected: c.code === state.campaign, disabled: !isReady(c) },
+      isReady(c) ? `${c.name}${c.status === 'live' ? ' · en cours' : ''}` : `${c.name} (à configurer)`)));
+    const periods = periodOptions(camp);
     if (!periods.find((p) => p.id === state.period)) state.period = 'all';
     $('f-period').replaceChildren(...periods.map((p) => el('option', { value: p.id, selected: p.id === state.period }, p.label)));
-    $('f-region').replaceChildren(...REGION_CHIPS.map((c) => el('button', {
-      type: 'button', 'aria-pressed': String(c.id === state.regionChip), 'data-v': c.id,
-      onclick: () => { state.regionChip = c.id; saveFilters(); renderFilters(); renderAll(); },
-    }, c.slot ? el('i', { class: 'sw', style: `background: var(--series-${c.slot})` }) : null, c.label)));
-    for (const [id, key] of [['f-compare', 'compare'], ['f-banner', 'banner']]) {
-      for (const b of $(id).querySelectorAll('button')) b.setAttribute('aria-checked', String(b.dataset.v === state[key]));
-    }
+    $('f-region').replaceChildren(...REGION_OPTIONS.map((o) => el('option', { value: o.id, selected: o.id === state.region }, o.label)));
+    $('f-banner').value = state.banner;
+    $('f-compare').value = state.compare;
+    const custom = state.period === 'custom';
+    $('custom-range').hidden = !custom;
+    if (isReady(camp)) {
+      for (const id of ['f-from', 'f-to']) { $(id).min = camp.start; $(id).max = camp.end; }
+      const rg = currentRange();
+      $('f-from').value = rg.d0;
+      $('f-to').value = rg.d1;
+      const days = diffDays(rg.d0, rg.d1) + 1;
+      $('range-note').textContent = rg.kind === 'all'
+        ? `${fmtDay(camp.start)} – ${fmtDay(camp.end)} · ${days} jours${camp.redemptionEnd && camp.redemptionEnd > camp.end ? ` · échanges jusqu'au ${fmtDay(camp.redemptionEnd)}` : ''}`
+        : `${fmtDay(rg.d0)} – ${fmtDay(rg.d1)} · ${days} jour${days > 1 ? 's' : ''}`;
+    } else $('range-note').textContent = '';
   }
-  $('f-campaign').addEventListener('change', (e) => { state.campaign = e.target.value; state.period = 'all'; saveFilters(); onCampaignChange(); });
-  $('f-period').addEventListener('change', (e) => { state.period = e.target.value; saveFilters(); renderAll(); });
-  for (const [id, key] of [['f-compare', 'compare'], ['f-banner', 'banner']]) {
-    $(id).addEventListener('click', (e) => {
-      const b = e.target.closest('button'); if (!b) return;
-      state[key] = b.dataset.v; saveFilters(); renderFilters(); renderAll();
+  $('f-campaign').addEventListener('change', (e) => { state.campaign = e.target.value; state.period = 'all'; state.custom = null; saveFilters(); onCampaignChange(); });
+  $('f-period').addEventListener('change', (e) => {
+    state.period = e.target.value;
+    if (state.period === 'custom' && !state.custom) { const rg = currentRange(); state.custom = { d0: rg.d0, d1: rg.d1 }; }
+    saveFilters(); renderFilters(); renderAll();
+  });
+  for (const id of ['f-from', 'f-to']) {
+    $(id).addEventListener('change', () => {
+      let d0 = $('f-from').value; let d1 = $('f-to').value;
+      if (!d0 || !d1) return;
+      if (d1 < d0) [d0, d1] = [d1, d0];
+      state.custom = { d0, d1 };
+      saveFilters(); renderFilters(); renderAll();
     });
+  }
+  for (const [id, key] of [['f-region', 'region'], ['f-banner', 'banner'], ['f-compare', 'compare']]) {
+    $(id).addEventListener('change', (e) => { state[key] = e.target.value; saveFilters(); renderFilters(); renderAll(); });
   }
   $('filters').addEventListener('submit', (e) => e.preventDefault());
 
+  function selectTab(tab, focus) {
+    if (!TABS.includes(tab)) tab = 'overview';
+    state.tab = tab;
+    for (const t of TABS) {
+      $(`tab-${t}`).setAttribute('aria-selected', String(t === tab));
+      $(`tab-${t}`).tabIndex = t === tab ? 0 : -1;
+      $(`panel-${t}`).hidden = t !== tab;
+    }
+    if (focus) $(`tab-${tab}`).focus();
+    try { history.replaceState(null, '', `#${tab}`); } catch (e) { /* sandboxed */ }
+    saveFilters();
+    renderCharts();
+  }
+  $('tabs').addEventListener('click', (e) => { const b = e.target.closest('[role="tab"]'); if (b) selectTab(b.id.slice(4)); });
+  $('tabs').addEventListener('keydown', (e) => {
+    const i = TABS.indexOf(state.tab);
+    if (e.key === 'ArrowRight') selectTab(TABS[(i + 1) % TABS.length], true);
+    else if (e.key === 'ArrowLeft') selectTab(TABS[(i - 1 + TABS.length) % TABS.length], true);
+  });
+
   // Per-viewer convenience only.
   function saveFilters() {
-    try { localStorage.setItem('report-filters', JSON.stringify({ campaign: state.campaign, period: state.period, compare: state.compare, regionChip: state.regionChip, banner: state.banner })); } catch (e) { /* storage unavailable */ }
+    try { localStorage.setItem('report-filters-v2', JSON.stringify({ campaign: state.campaign, period: state.period, custom: state.custom, compare: state.compare, region: state.region, banner: state.banner, tab: state.tab })); } catch (e) { /* storage unavailable */ }
   }
   function loadFilters() {
     try {
-      const f = JSON.parse(localStorage.getItem('report-filters') || 'null');
-      if (!f) return;
-      if (state.campaigns.find((c) => c.code === f.campaign && isReady(c))) state.campaign = f.campaign;
-      Object.assign(state, { period: f.period || 'all', compare: f.compare || 'prev', regionChip: f.regionChip || 'all', banner: f.banner || 'all' });
+      const f = JSON.parse(localStorage.getItem('report-filters-v2') || 'null');
+      if (f) {
+        if (state.campaigns.find((c) => c.code === f.campaign && isReady(c))) state.campaign = f.campaign;
+        Object.assign(state, { period: f.period || 'all', custom: f.custom || null, compare: f.compare || 'prev', region: f.region || 'all', banner: f.banner || 'all', tab: f.tab || 'overview' });
+      }
     } catch (e) { /* storage unavailable */ }
+    const hash = (location.hash || '').slice(1);
+    if (TABS.includes(hash)) state.tab = hash;
   }
 
   // ---------------------------------------------------------------------------
-  // KPI tiles
+  // KPI cells
   // ---------------------------------------------------------------------------
-  function deltaNode(k, cur, cmp) {
+  function deltaText(k, cur, cmp) {
     if (cur == null || cmp == null) return null;
     if (k.delta === 'pts') {
       const d = (cur - cmp) * 100;
       const cls = Math.abs(d) < 0.05 ? 'flat' : d > 0 ? 'up' : 'down';
-      return el('span', { class: `delta ${cls}` }, `${d > 0 ? '▲' : d < 0 ? '▼' : '■'} ${nf1.format(Math.abs(d))} pts`);
+      return el('span', { class: `delta ${cls}` }, `${d > 0 ? '+' : d < 0 ? '−' : ''}${nf1.format(Math.abs(d))} pts`);
     }
-    if (!cmp) return el('span', { class: 'delta flat' }, 'Nouveau');
+    if (!cmp) return null;
     const d = (cur - cmp) / Math.abs(cmp);
     const cls = Math.abs(d) < 0.005 ? 'flat' : d > 0 ? 'up' : 'down';
-    const txt = d >= 1 ? `×${nf1.format(cur / cmp)}` : `${nf1.format(Math.abs(d) * 100)} %`;
-    return el('span', { class: `delta ${cls}` }, `${d > 0 ? '▲' : d < 0 ? '▼' : '■'} ${txt}`);
+    const txt = d >= 1 ? `×${nf1.format(cur / cmp)}` : `${d > 0 ? '+' : d < 0 ? '−' : ''}${nf1.format(Math.abs(d) * 100)} %`;
+    return el('span', { class: `delta ${cls}` }, txt);
+  }
+  function subLine(v) {
+    const { k, value, cmp, cmpInfo, rg } = v;
+    if (k.missing) return [el('span', {}, 'En attente des données POS')];
+    if (value == null && k.exact && rg && rg.kind === 'custom') return [el('span', {}, NEEDS_EXACT)];
+    const parts = [];
+    const d = deltaText(k, value, cmp);
+    if (d) parts.push(d, el('span', {}, cmpInfo.label));
+    if (k.scope === 'campaign' && rg && rg.kind !== 'all') parts.push(el('span', {}, 'Total de campagne'));
+    if (k.scope === 'stock') parts.push(el('span', {}, 'À ce jour'));
+    if (k.noRegion && !allRegionsSelected()) parts.push(el('span', {}, 'Toutes BU'));
+    return parts;
+  }
+  function labelNode(k) {
+    const status = sourceStatus(k);
+    const def = KPI_DEF[k.kpiRef || k.id];
+    const tipText = [k.note || def?.definition_fr, def?.source_fr ? `Source : ${def.source_fr}` : null].filter(Boolean).join(' ');
+    return el('div', { class: 'k-label' },
+      el('span', {}, k.label),
+      tipText ? el('span', { class: 'info', tabindex: 0, 'data-tip': tipText, 'aria-label': `À propos : ${k.label}` }, 'i') : null,
+      status === 'partial' ? el('span', { class: 'flag', tabindex: 0, 'data-tip': k.note || def?.source_fr || 'Donnée partielle' }, 'partiel') : null,
+      status === 'missing' ? el('span', { class: 'flag missing', tabindex: 0, 'data-tip': k.note || 'Source de données manquante' }, 'source manquante') : null);
+  }
+  function valueText(v) {
+    const { k, value, loaded } = v;
+    if (value != null) return FMT[k.fmt](value);
+    if (k.missing) return 'Non disponible';
+    if (!loaded) return state.busy ? '…' : '—';
+    return '—';
+  }
+  function kpiCell(id, hero) {
+    const v = kpiValue(KPI[id]);
+    const st = v.k.state ? v.k.state(v.value) : null;
+    const cell = el('div', { class: 'k' },
+      labelNode(v.k),
+      el('div', { class: `k-value${v.value == null ? ' na' : ''}` }, valueText(v)),
+      st ? el('span', { class: `state ${st.cls}` }, st.label) : null,
+      el('div', { class: 'k-sub' }, subLine(v)));
+    if (hero && v.k.spark) cell.append(sparkline(v.k));
+    return cell;
+  }
+  function renderKpis() {
+    $('hero').replaceChildren(...OVERVIEW_HERO.map((id) => kpiCell(id, true)));
+    $('kpis-overview').replaceChildren(...OVERVIEW_MORE.map((id) => kpiCell(id)));
+    for (const sec of ['audience', 'prix', 'mecaniques', 'commercial']) {
+      $(`kpis-${sec}`).replaceChildren(...KPIS.filter((k) => k.section === sec).map((k) => kpiCell(k.id)));
+    }
   }
 
-  function kpiValues() {
+  // Inline SVG sparkline of the KPI's daily series over the selected range.
+  function sparkline(k) {
     const camp = currentCampaign();
     const rg = currentRange();
-    const regions = activeRegions();
     const res = state.results[camp?.code];
-    return KPIS.map((k) => {
-      const value = computeKpi(k, res, camp, rg, regions);
-      const cmpInfo = camp && rg ? comparisonFor(k, camp, rg) : { na: '' };
-      let cmp = null;
-      if (!cmpInfo.na) cmp = computeKpi(k, cmpInfo.res, cmpInfo.camp, cmpInfo.rg, regions);
-      return { k, value, cmp, cmpInfo, loaded: !!res };
-    });
-  }
-
-  function scopeText(k, rg) {
-    if (k.scope === 'campaign' && rg?.kind !== 'all') return 'Campagne complète';
-    if (k.scope === 'stock') return 'À ce jour';
-    if (k.noRegion && !allRegionsSelected()) return 'Toutes BU (non ventilé)';
-    return null;
-  }
-
-  function renderTiles(values) {
-    const rg = currentRange();
-    const loadingQ = state.busy;
-    for (const sec of ['audience', 'prix', 'mecaniques', 'commercial']) {
-      const host = $(`tiles-${sec === 'mecaniques' ? 'meca' : sec === 'commercial' ? 'com' : sec}`);
-      host.replaceChildren(...values.filter((v) => v.k.section === sec).map(({ k, value, cmp, cmpInfo, loaded }) => {
-        const status = sourceStatus(k);
-        const st = k.status ? k.status(value) : null;
-        const valueText = value == null
-          ? (k.missing ? 'Non disponible' : loaded || !loadingQ ? '—' : '…')
-          : FMT[k.fmt](value);
-        const scope = cmpInfo.na && k.scope !== 'period' ? null : scopeText(k, rg);
-        let foot;
-        if (k.missing) foot = [el('span', {}, 'En attente des données POS')];
-        else if (cmpInfo.na) foot = [el('span', { class: 'scope' }, cmpInfo.na)];
-        else if (value != null && cmp != null) foot = [deltaNode(k, value, cmp), el('span', {}, `${cmpInfo.label} (${FMT[k.fmt](cmp)})`)];
-        else foot = [el('span', { class: 'scope' }, `${cmpInfo.label} : n/d`)];
-        return el('article', { class: 'tile' },
-          el('div', { class: 'tile-top' },
-            el('span', { class: 'tile-label', 'data-tip': k.note || KPI_DEF[k.kpiRef || k.id]?.definition_fr || null, tabindex: 0 }, k.label),
-            pillFor(status, k.note || KPI_DEF[k.kpiRef || k.id]?.source_fr)),
-          el('div', { class: `tile-value${value == null ? ' na' : ''}` }, valueText),
-          st ? el('span', { class: `pill ${st.cls}` }, st.label) : null,
-          el('div', { class: 'tile-foot' }, ...foot, scope ? el('span', { class: 'scope' }, `· ${scope}`) : null));
-      }));
-    }
+    const box = svgEl('svg', { class: 'spark', viewBox: '0 0 200 36', preserveAspectRatio: 'none', 'aria-hidden': 'true' });
+    if (!res || !rg) return box;
+    const s = k.spark();
+    const rows = daily(res, s.qid, rg, activeRegions(), { noRegion: s.noRegion, allowUnassigned: allRegionsSelected(), redeem: s.redeem });
+    if (!rows || !rows.length) return box;
+    const days = eachDay(rg.d0, s.redeem ? rg.redeemD1 : rg.d1);
+    const vals = days.map((d) => sum(rows.filter((r) => r.day === d), s.f));
+    if (vals.length < 2) return box;
+    const max = Math.max(...vals) || 1;
+    const pts = vals.map((v, i) => [(i / (vals.length - 1)) * 196 + 2, 33 - (v / max) * 29]);
+    const line = pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join('');
+    const color = cssVar('--data');
+    box.append(svgEl('path', { d: `${line}L198,35L2,35Z`, fill: color, opacity: '0.10' }));
+    box.append(svgEl('path', { d: line, fill: 'none', stroke: color, 'stroke-width': '1.5', 'vector-effect': 'non-scaling-stroke' }));
+    return box;
   }
 
   // ---------------------------------------------------------------------------
-  // Charts (Apache ECharts 6)
+  // Cards, bar lists and charts
   // ---------------------------------------------------------------------------
   const charts = {};
   const hasEcharts = () => typeof window.echarts !== 'undefined';
   function theme() {
     return {
       ink: cssVar('--ink'), ink2: cssVar('--ink-2'), muted: cssVar('--muted'), line: cssVar('--line'),
-      lineStrong: cssVar('--line-strong'), surface: cssVar('--surface'), accent: cssVar('--accent'),
-      seq: cssVar('--seq'), seqSoft: cssVar('--seq-soft'),
-      s: [1, 2, 3, 4].map((i) => cssVar(`--series-${i}`)),
-      warning: cssVar('--warning'), critical: cssVar('--critical'), good: cssVar('--good'),
-      font: cssVar('--font-body') || 'system-ui',
+      line2: cssVar('--line-2'), surface: cssVar('--surface'), data: cssVar('--data'), soft: cssVar('--data-soft'),
+      ghost: cssVar('--data-ghost'), font: cssVar('--font') || 'system-ui',
+      region: (r) => cssVar(REGION_VAR[r]),
     };
   }
-  function baseOption(t, extra = {}) {
+  function baseOption(t) {
     return {
-      animationDuration: 400,
+      animationDuration: 300,
       textStyle: { fontFamily: t.font, color: t.ink2 },
-      grid: { left: 4, right: 12, top: 14, bottom: 4, containLabel: true },
+      grid: { left: 4, right: 24, top: 10, bottom: 2, containLabel: true },
       tooltip: {
         trigger: 'axis', confine: true,
-        backgroundColor: t.surface, borderColor: t.line, borderWidth: 1,
+        backgroundColor: t.surface, borderColor: t.line, borderWidth: 1, padding: [8, 10],
         textStyle: { color: t.ink, fontSize: 12, fontFamily: t.font },
-        axisPointer: { type: 'line', lineStyle: { color: t.lineStrong, width: 1 } },
-        extraCssText: 'box-shadow: 0 6px 24px rgba(0,0,0,.14); border-radius: 8px;',
+        axisPointer: { type: 'line', lineStyle: { color: t.line2, width: 1 } },
+        extraCssText: 'box-shadow: 0 8px 24px rgba(0,0,0,.12); border-radius: 8px;',
       },
-      ...extra,
     };
   }
   const catAxis = (t, data, extra = {}) => ({
-    type: 'category', data, axisLine: { lineStyle: { color: t.lineStrong } }, axisTick: { show: false },
-    axisLabel: { color: t.muted, fontSize: 11, hideOverlap: true }, ...extra,
+    type: 'category', data, boundaryGap: extra.boundaryGap ?? true,
+    axisLine: { lineStyle: { color: t.line2 } }, axisTick: { show: false },
+    axisLabel: { color: t.muted, fontSize: 11, hideOverlap: true, margin: 10 },
   });
-  const valAxis = (t, extra = {}) => ({
-    type: 'value', splitLine: { lineStyle: { color: t.line } }, axisLine: { show: false }, axisTick: { show: false },
-    axisLabel: { color: t.muted, fontSize: 11, formatter: (v) => compact.format(v) }, ...extra,
+  const valAxis = (t, fmt = (v) => compact.format(v)) => ({
+    type: 'value', splitNumber: 3, splitLine: { lineStyle: { color: t.line, type: [3, 3] } },
+    axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: t.muted, fontSize: 11, formatter: fmt },
   });
   function tooltipRows(params, fmt = FMT.int) {
-    const list = Array.isArray(params) ? params : [params];
+    const list = (Array.isArray(params) ? params : [params]).filter((p) => p.value != null);
     const head = list[0]?.axisValueLabel || list[0]?.name || '';
-    const total = list.reduce((a, p) => a + (Number(p.value) || 0), 0);
-    const rows = list.map((p) => `<div style="display:flex;justify-content:space-between;gap:16px"><span>${p.marker}${p.seriesName}</span><b style="font-variant-numeric:tabular-nums">${p.value == null ? '—' : fmt(p.value)}</b></div>`).join('');
-    const tot = list.length > 1 ? `<div style="display:flex;justify-content:space-between;gap:16px;border-top:1px solid rgba(127,127,127,.3);margin-top:4px;padding-top:4px"><span>Total</span><b>${fmt(total)}</b></div>` : '';
-    return `<div style="font-weight:600;margin-bottom:4px">${head}</div>${rows}${tot}`;
+    const rows = list.map((p) => `<div style="display:flex;justify-content:space-between;gap:18px"><span>${p.marker}${escapeHtml(p.seriesName)}</span><b style="font-variant-numeric:tabular-nums">${fmt(p.value)}</b></div>`).join('');
+    return `<div style="font-weight:600;margin-bottom:4px">${head}</div>${rows}`;
   }
 
-  // A chart card: header, legend, plot, data table view.
-  function chartCard(hostId, { title, note, legend, empty, table, height }) {
+  // A card: title, optional note, tools (segmented control, table toggle), body.
+  function card(hostId, { title, note, legend, tools, body, table }) {
     const host = $(hostId);
-    const plotId = `${hostId}-plot`;
-    const children = [
-      el('div', { class: 'chart-head' }, el('h3', {}, title), note ? el('p', { class: 'chart-note' }, note) : null),
-    ];
-    if (legend?.length) children.push(el('div', { class: 'legend' }, legend.map((l) => el('span', {}, el('i', { style: `background:${l.color}` }), l.label))));
-    if (empty) {
-      children.push(el('div', { class: 'empty' }, el('div', {}, el('strong', {}, empty.title), empty.body)));
-      disposeChart(plotId);
-    } else {
-      children.push(el('div', { class: `chart${height === 'tall' ? ' tall' : ''}`, id: plotId, role: 'img', 'aria-label': title }));
-      if (table) {
-        children.push(el('details', { class: 'data-view' }, el('summary', {}, 'Voir les données'),
-          el('div', { class: 'table-wrap mini-table' }, dataTable(table.cols, table.rows))));
-      }
+    const tableOpen = state.openTables.has(hostId);
+    const toolNodes = [...(tools || [])];
+    if (table) {
+      toolNodes.push(el('button', { type: 'button', class: 'link', 'aria-expanded': String(tableOpen), onclick: () => {
+        if (state.openTables.has(hostId)) state.openTables.delete(hostId); else state.openTables.add(hostId);
+        renderCharts();
+      } }, tableOpen ? 'Masquer le tableau' : 'Tableau'));
     }
-    host.replaceChildren(...children);
-    return empty ? null : plotId;
+    host.replaceChildren(...[
+      el('div', { class: 'c-head' },
+        el('div', {}, el('h3', {}, title), note ? el('p', { class: 'c-note' }, note) : null),
+        toolNodes.length ? el('div', { class: 'c-tools' }, toolNodes) : null),
+      legend?.length ? el('div', { class: 'legend' }, legend.map((l) => el('span', {}, el('i', { class: l.dash ? 'dash' : null, style: `background:${l.color}` }), l.label))) : null,
+      body,
+      table && tableOpen ? el('div', { class: 'data-view table-wrap' }, dataTable(table.cols, table.rows)) : null,
+    ].filter(Boolean));
+  }
+  function emptyBody(what) {
+    const camp = currentCampaign();
+    if (state.busy) return el('div', { class: 'empty' }, el('div', {}, el('strong', {}, 'Chargement…'), `${what} arrive avec l'actualisation en cours.`));
+    if (!isReady(camp)) return el('div', { class: 'empty' }, el('div', {}, el('strong', {}, 'Campagne à configurer'), 'Ajoutez ses dates pour voir les données.'));
+    return el('div', { class: 'empty' }, el('div', {}, el('strong', {}, 'Pas encore de données'), caps.mcp ? 'Cliquez sur Actualiser pour charger la campagne.' : "Les données s'afficheront dès qu'un éditeur aura actualisé le rapport."));
   }
   function dataTable(cols, rows) {
     return el('table', { class: 'data' },
@@ -626,13 +745,15 @@ FROM rctapi_minigame_editions WHERE deleted_at IS NULL ORDER BY start_at DESC`;
         return el('td', { class: c.num ? 'num' : null }, v instanceof Node ? v : (v == null ? '—' : c.fmt ? c.fmt(v) : v));
       })))));
   }
+  function chartBody(id, height) {
+    return el('div', { class: 'chart', id, role: 'img', 'aria-label': 'Graphique', style: height ? `height:${height}px` : null });
+  }
   function disposeChart(id) { if (charts[id]) { charts[id].dispose(); delete charts[id]; } }
   function drawChart(id, option) {
-    if (!id) return;
     const node = $(id);
     if (!node) return;
     if (!hasEcharts()) {
-      node.replaceChildren(el('div', { class: 'empty' }, el('div', {}, el('strong', {}, 'Graphique indisponible'), 'La librairie de graphiques n\'a pas pu être chargée. Les données restent consultables dans le tableau ci-dessous.')));
+      node.replaceChildren(el('div', { class: 'empty' }, el('div', {}, el('strong', {}, 'Graphique indisponible'), "La librairie de graphiques n'a pas pu être chargée. Ouvrez le tableau pour voir les données.")));
       return;
     }
     disposeChart(id);
@@ -641,27 +762,44 @@ FROM rctapi_minigame_editions WHERE deleted_at IS NULL ORDER BY start_at DESC`;
     charts[id] = chart;
     resizeObserver.observe(node);
   }
-  const resizeObserver = new ResizeObserver((entries) => {
-    for (const e of entries) charts[e.target.id]?.resize();
+  const resizeObserver = new ResizeObserver((entries) => { for (const e of entries) charts[e.target.id]?.resize(); });
+
+  // Ranked rows with an inline bar. items: { name, value, max, label, sub, color, tick }
+  function barList(items, opts = {}) {
+    const rows = items.map((it) => el('div', { class: 'brow' },
+      el('div', { class: 'bname', title: it.name }, it.color ? el('i', { style: `background:${it.color}` }) : null, it.name),
+      el('div', { class: 'btrack' },
+        el('div', { class: 'bfill', style: `width:${Math.max(0, Math.min(100, (it.value / (it.max || 1)) * 100)).toFixed(1)}%;${it.fill ? `background:${it.fill}` : ''}` }),
+        it.tick != null ? el('div', { class: 'btick', style: `left:calc(${(it.tick * 100).toFixed(1)}% - 1px)` }) : null),
+      el('div', { class: 'bval' }, it.label, it.sub ? el('small', {}, it.sub) : null),
+      ...(it.extra || [])));
+    const head = opts.head ? el('div', { class: 'brow head' }, opts.head.map((h) => el('div', {}, h))) : null;
+    return el('div', { class: `blist${opts.cls ? ` ${opts.cls}` : ''}` }, head, rows);
+  }
+
+  // Daily series for the selected range, summed over the selected BUs.
+  function series(res, qid, rg, f, opts = {}) {
+    const rows = daily(res, qid, rg, opts.regions || activeRegions(), opts);
+    if (!rows) return null;
+    const days = eachDay(rg.d0, opts.redeem ? rg.redeemD1 : rg.d1);
+    const by = new Map();
+    for (const r of rows) by.set(r.day, (by.get(r.day) || 0) + (Number(typeof f === 'function' ? f(r) : r[f]) || 0));
+    return { days, values: days.map((d) => (by.has(d) ? by.get(d) : null)) };
+  }
+  // Comparison series aligned by position (day 1 vs day 1).
+  function compareSeries(qid, f, opts = {}) {
+    const camp = currentCampaign();
+    const rg = currentRange();
+    const info = comparisonFor({ scope: 'period', allowBeforeStart: opts.allowBeforeStart }, camp, rg);
+    if (info.na || !info.res) return null;
+    const s = series(info.res, qid, info.rg, f, opts);
+    if (!s || s.values.every((v) => v == null)) return null;
+    return { ...s, label: info.label.replace(/^vs /, '') };
+  }
+  const lineSeries = (name, data, color, extra = {}) => ({
+    name, type: 'line', data, symbol: 'none', smooth: 0.15, connectNulls: false,
+    lineStyle: { width: 2, color }, itemStyle: { color }, emphasis: { focus: 'series' }, ...extra,
   });
-
-  // Horizontal bars: reserve room for category labels so long names never clip.
-  function hbar(t, labels, right = 56) {
-    const longest = Math.max(0, ...labels.map((l) => String(l).length));
-    const left = Math.round(Math.min(230, longest * 7.4 + 14));
-    return { grid: { left, right, top: 6, bottom: 22, containLabel: false }, label: { color: t.ink2, fontSize: 12, width: left - 12, overflow: 'truncate' } };
-  }
-  const noData = (what) => ({ title: 'Pas encore de données', body: `${what} s'affichera après la première actualisation.` });
-
-  function daysOfCampaign(c) {
-    const out = [];
-    for (let d = c.start; d <= c.end; d = addDays(d, 1)) out.push(d);
-    return out;
-  }
-  function periodMarkArea(t, days, rg) {
-    if (!rg || rg.kind === 'all') return undefined;
-    return { silent: true, itemStyle: { color: t.accent, opacity: 0.08 }, data: [[{ xAxis: fmtDay(rg.d0) }, { xAxis: fmtDay(rg.d1) }]] };
-  }
 
   function renderCharts() {
     const t = theme();
@@ -669,329 +807,353 @@ FROM rctapi_minigame_editions WHERE deleted_at IS NULL ORDER BY start_at DESC`;
     const res = state.results[camp?.code] || {};
     const regions = activeRegions();
     const rg = currentRange();
-    const ready = isReady(camp);
-    const days = ready ? daysOfCampaign(camp) : [];
-    const labels = days.map(fmtDay);
-    const regionsShown = REGION_ORDER.filter((r) => regions.includes(r));
-    const regionLegend = regionsShown.map((r) => ({ label: `${r} · ${REGION_LABEL[r]}`, color: t.s[REGION_SLOT[r] - 1] }));
+    const tab = state.tab;
+    for (const id of Object.keys(charts)) if (!$(id) || $(id).closest('[hidden]')) disposeChart(id);
 
-    // Active players per day, stacked by region
-    {
-      const rows = res.q01?.rows;
-      const id = chartCard('card-active', {
-        title: 'Joueurs actifs par jour', note: 'Par BU · empilé', legend: regionLegend,
-        empty: rows ? null : noData('La courbe des joueurs actifs'),
-        table: rows && { cols: [{ label: 'Jour', key: 'day' }, { label: 'BU', key: 'region_code' }, { label: 'Joueurs actifs', key: 'active_players', num: true, fmt: FMT.int }, { label: 'Parties', key: 'games_played', num: true, fmt: FMT.int }], rows: regionFilter(rows, regions) },
-      });
-      if (id) {
-        drawChart(id, {
-          ...baseOption(t),
-          tooltip: { ...baseOption(t).tooltip, formatter: (p) => tooltipRows(p) },
-          xAxis: catAxis(t, labels, { boundaryGap: false }),
-          yAxis: valAxis(t),
-          series: regionsShown.map((r, i) => ({
-            name: r, type: 'line', stack: 'all', symbol: 'none', smooth: 0.2,
-            lineStyle: { width: 1.5, color: t.s[REGION_SLOT[r] - 1] },
-            areaStyle: { color: t.s[REGION_SLOT[r] - 1], opacity: 0.82 },
-            itemStyle: { color: t.s[REGION_SLOT[r] - 1] },
-            data: days.map((d) => rows.find((x) => x.day === d && x.region_code === r)?.active_players ?? 0),
-            markArea: i === 0 ? periodMarkArea(t, days, rg) : undefined,
-          })),
+    if (tab === 'overview') {
+      // Trend: active players per day, with the comparison period dashed.
+      {
+        const s = rg && res.q01 ? series(res, 'q01', rg, 'active_players') : null;
+        const c = s ? compareSeries('q01', 'active_players') : null;
+        const legend = s ? [{ label: 'Joueurs actifs', color: t.data }, ...(c ? [{ label: c.label, color: t.ghost, dash: true }] : [])] : null;
+        card('card-trend', {
+          title: 'Joueurs actifs par jour', note: rg ? rg.label : null, legend,
+          body: s ? chartBody('ch-trend') : emptyBody('La tendance'),
+          table: s && { cols: [{ label: 'Jour', key: 'day' }, { label: 'Joueurs actifs', key: 'v', num: true, fmt: FMT.int }], rows: s.days.map((d, i) => ({ day: d, v: s.values[i] })) },
         });
-      }
-    }
-
-    // Signups per day, stacked bars by region
-    {
-      const rows = res.q01?.rows;
-      const id = chartCard('card-signups', {
-        title: 'Inscriptions par jour', note: 'Par BU', legend: regionLegend,
-        empty: rows ? null : noData('Le graphique des inscriptions'),
-        table: rows && { cols: [{ label: 'Jour', key: 'day' }, { label: 'BU', key: 'region_code' }, { label: 'Inscriptions', key: 'signups', num: true, fmt: FMT.int }], rows: regionFilter(rows, regions) },
-      });
-      if (id) {
-        drawChart(id, {
-          ...baseOption(t),
-          tooltip: { ...baseOption(t).tooltip, axisPointer: { type: 'shadow', shadowStyle: { color: t.line, opacity: 0.4 } }, formatter: (p) => tooltipRows(p) },
-          xAxis: catAxis(t, labels),
-          yAxis: valAxis(t),
-          series: regionsShown.map((r, i) => ({
-            name: r, type: 'bar', stack: 'all', barMaxWidth: 14,
-            itemStyle: { color: t.s[REGION_SLOT[r] - 1], borderColor: t.surface, borderWidth: 0.5, borderRadius: i === regionsShown.length - 1 ? [3, 3, 0, 0] : 0 },
-            data: days.map((d) => rows.find((x) => x.day === d && x.region_code === r)?.signups ?? 0),
-            markArea: i === 0 ? periodMarkArea(t, days, rg) : undefined,
-          })),
-        });
-      }
-    }
-
-    // App downloads, campaign vs the same number of days before launch
-    {
-      const rows = res.q12?.rows;
-      const legend = [{ label: 'App Couche-Tard', color: t.s[1] }, { label: 'App Circle K', color: t.s[0] }]
-        .filter((l) => state.banner === 'all' || l.label.endsWith(state.banner));
-      const id = chartCard('card-downloads', {
-        title: "Téléchargements d'app par jour",
-        note: 'iOS + Android · zone grise = même durée avant le lancement · non ventilé par BU',
-        legend,
-        empty: rows ? null : noData('Le graphique des téléchargements'),
-        table: rows && { cols: [{ label: 'Jour', key: 'day' }, { label: 'Campagne', get: (r) => (r.in_campaign ? 'oui' : 'avant') }, { label: 'Couche-Tard iOS', key: 'couche_tard_ios', num: true, fmt: FMT.int }, { label: 'Couche-Tard Android', key: 'couche_tard_android', num: true, fmt: FMT.int }, { label: 'Circle K iOS', key: 'circle_k_ios', num: true, fmt: FMT.int }, { label: 'Circle K Android', key: 'circle_k_android', num: true, fmt: FMT.int }, { label: 'iOS via web (CT + CK)', get: (r) => (r.couche_tard_ios_web_referrer || 0) + (r.circle_k_ios_web_referrer || 0), num: true, fmt: FMT.int }], rows },
-      });
-      if (id) {
-        const all = rows.map((r) => r.day);
-        const ser = [];
-        if (state.banner !== 'Circle K') ser.push({ name: 'App Couche-Tard', color: t.s[1], f: (r) => r.couche_tard_ios + r.couche_tard_android });
-        if (state.banner !== 'Couche-Tard') ser.push({ name: 'App Circle K', color: t.s[0], f: (r) => r.circle_k_ios + r.circle_k_android });
-        const launch = all.find((d) => d >= camp.start);
-        drawChart(id, {
-          ...baseOption(t),
-          tooltip: { ...baseOption(t).tooltip, formatter: (p) => tooltipRows(p) },
-          xAxis: catAxis(t, all.map(fmtDay), { boundaryGap: false }),
-          yAxis: valAxis(t),
-          series: ser.map((s, i) => ({
-            name: s.name, type: 'line', symbol: 'none', lineStyle: { width: 2, color: s.color }, itemStyle: { color: s.color },
-            areaStyle: { color: s.color, opacity: 0.08 },
-            data: rows.map(s.f),
-            markArea: i === 0 && launch ? { silent: true, itemStyle: { color: t.muted, opacity: 0.08 }, data: [[{ xAxis: fmtDay(all[0]) }, { xAxis: fmtDay(addDays(launch, -1)) }]] } : undefined,
-            markLine: i === 0 && launch ? { silent: true, symbol: 'none', lineStyle: { color: t.ink2, type: 'dashed', width: 1 }, label: { formatter: 'Lancement', color: t.ink2, fontSize: 11 }, data: [{ xAxis: fmtDay(launch) }] } : undefined,
-          })),
-        });
-      }
-    }
-
-    // Prizes won vs redeemed per day
-    {
-      const won = res.q05?.rows; const red = res.q11?.rows;
-      const legend = [{ label: 'Prix gagnés', color: t.s[0] }, { label: 'Prix échangés (coupons activés)', color: t.s[1] }];
-      const id = chartCard('card-prizes-daily', {
-        title: 'Prix gagnés et échangés par jour', legend,
-        empty: won && red ? null : noData('Le graphique des prix'),
-        table: won && red && { cols: [{ label: 'Jour', key: 'day' }, { label: 'Gagnés', key: 'won', num: true, fmt: FMT.int }, { label: 'Échangés', key: 'red', num: true, fmt: FMT.int }], rows: days.map((d) => ({ day: d, won: sum(regionFilter(won, regions).filter((r) => r.day === d), 'won'), red: sum(regionFilter(red, regions, allRegionsSelected()).filter((r) => r.day === d), 'coupon_activations') })) },
-      });
-      if (id) {
-        const redDays = [...days];
-        for (let d = addDays(camp.end, 1); red.some((r) => r.day === d); d = addDays(d, 1)) redDays.push(d);
-        drawChart(id, {
-          ...baseOption(t),
-          tooltip: { ...baseOption(t).tooltip, formatter: (p) => tooltipRows(p) },
-          xAxis: catAxis(t, redDays.map(fmtDay), { boundaryGap: false }),
-          yAxis: valAxis(t),
-          series: [
-            { name: 'Prix gagnés', type: 'line', symbol: 'none', lineStyle: { width: 2, color: t.s[0] }, itemStyle: { color: t.s[0] }, data: redDays.map((d) => (d <= camp.end ? sum(regionFilter(won, regions).filter((r) => r.day === d), 'won') : null)), markArea: periodMarkArea(t, days, rg) },
-            { name: 'Prix échangés', type: 'line', symbol: 'none', lineStyle: { width: 2, color: t.s[1] }, itemStyle: { color: t.s[1] }, data: redDays.map((d) => sum(regionFilter(red, regions, allRegionsSelected()).filter((r) => r.day === d), 'coupon_activations')) },
-          ],
-        });
-      }
-    }
-
-    // Grand prize entries by source
-    {
-      const rows = res.q06?.rows;
-      const scoped = rows && rg ? daily(res, 'q06', rg, regions) : null;
-      const src = [['entries_gameplay', 'Parties jouées'], ['entries_badge', 'Défis (badges)'], ['entries_bonus', 'Actions bonus'], ['entries_referral', 'Parrainage'], ['entries_other', 'Autres']]
-        .map(([k, label]) => ({ label, v: scoped ? sum(scoped, k) : 0 })).filter((s) => s.v > 0);
-      const id = chartCard('card-entries', {
-        title: 'Participations au grand prix par source', note: rg?.kind === 'week' ? rg.label : 'Période sélectionnée',
-        empty: rows ? null : noData('La répartition des participations'),
-        table: rows && { cols: [{ label: 'Source', key: 'label' }, { label: 'Participations', key: 'v', num: true, fmt: FMT.int }], rows: src },
-      });
-      if (id) {
-        const total = src.reduce((a, s) => a + s.v, 0);
-        const hb = hbar(t, src.map((s) => s.label), 64);
-        drawChart(id, {
-          ...baseOption(t, { grid: hb.grid }),
-          tooltip: { ...baseOption(t).tooltip, trigger: 'item', formatter: (p) => `<b>${p.name}</b><br>${FMT.int(p.value)} · ${FMT.pct(p.value / total)}` },
-          xAxis: valAxis(t),
-          yAxis: catAxis(t, src.map((s) => s.label), { inverse: true, axisLabel: hb.label }),
-          series: [{ type: 'bar', barMaxWidth: 22, itemStyle: { color: t.seq, borderRadius: [0, 4, 4, 0] }, data: src.map((s) => s.v),
-            label: { show: true, position: 'right', color: t.ink2, fontSize: 11, formatter: (p) => FMT.pct(p.value / total) } }],
-        });
-      }
-    }
-
-    // Pacing by partner
-    {
-      const rows = res.q04?.rows;
-      let parts = [];
-      if (rows) {
-        const by = new Map();
-        for (const r of regionFilter(rows, regions)) {
-          const p = by.get(r.partner) || { partner: r.partner, inventory: 0, won: 0, released: 0, net: 0, remaining: 0, planned: 0, redeemed: 0 };
-          p.inventory += r.inventory || 0; p.won += r.won || 0; p.released += r.released_to_stock || 0; p.net += r.net_awarded || 0;
-          p.remaining += r.remaining || 0; p.planned += r.planned_to_date || 0; p.redeemed += r.redeemed || 0;
-          by.set(r.partner, p);
+        if (s) {
+          drawChart('ch-trend', {
+            ...baseOption(t),
+            tooltip: { ...baseOption(t).tooltip, formatter: (p) => tooltipRows(p) },
+            xAxis: catAxis(t, s.days.map(fmtDay), { boundaryGap: false }),
+            yAxis: valAxis(t),
+            series: [
+              lineSeries('Joueurs actifs', s.values, t.data, { areaStyle: { color: t.data, opacity: 0.08 } }),
+              ...(c ? [lineSeries(c.label, s.days.map((_, i) => c.values[i] ?? null), t.ghost, { lineStyle: { width: 1.5, color: t.ghost, type: [4, 4] } })] : []),
+            ],
+          });
         }
-        parts = [...by.values()].map((p) => ({ ...p, pace: ratio(p.net, p.planned) })).sort((a, b) => (a.pace ?? 0) - (b.pace ?? 0));
       }
-      const id = chartCard('card-pacing', {
-        title: 'Rythme de distribution par partenaire',
-        note: 'Prix distribués ÷ plan linéaire à date · bande = 90 à 110 % du plan',
-        height: 'tall',
-        empty: rows ? null : noData('Le rythme par partenaire'),
-        table: rows && {
-          cols: [
-            { label: 'Partenaire', key: 'partner' },
-            { label: 'Inventaire', key: 'inventory', num: true, fmt: FMT.int },
-            { label: 'Gagnés', key: 'won', num: true, fmt: FMT.int },
-            { label: 'Remis en stock', key: 'released', num: true, fmt: FMT.int },
-            { label: 'Distribués', key: 'net', num: true, fmt: FMT.int },
-            { label: 'Échangés', key: 'redeemed', num: true, fmt: FMT.int },
-            { label: 'Restants', key: 'remaining', num: true, fmt: FMT.int },
-            { label: 'Rythme', key: 'pace', num: true, fmt: FMT.pct },
-            { label: 'Statut', get: (r) => { const s = paceStatus(r.pace); return s ? el('span', { class: `pill ${s.cls}` }, s.label) : '—'; } },
-          ],
-          rows: parts,
-        },
-      });
-      if (id) {
-        const node = $(id).closest('.chart-card').querySelector('details');
-        if (node) node.open = true;
-        const hb = hbar(t, parts.map((p) => p.partner));
-        drawChart(id, {
-          ...baseOption(t, { grid: hb.grid }),
-          tooltip: { ...baseOption(t).tooltip, trigger: 'item', formatter: (p) => { const r = parts[p.dataIndex]; const s = paceStatus(r.pace); return `<b>${r.partner}</b><br>Rythme : ${FMT.pct(r.pace)} · ${s?.label || ''}<br>Distribués : ${FMT.int(r.net)} / plan ${FMT.int(r.planned)}<br>Restants : ${FMT.int(r.remaining)}`; } },
-          xAxis: valAxis(t, { max: (v) => Math.max(1.2, Math.ceil(v.max * 10) / 10), axisLabel: { color: t.muted, fontSize: 11, formatter: (v) => `${Math.round(v * 100)} %` } }),
-          yAxis: catAxis(t, parts.map((p) => p.partner), { axisLabel: hb.label }),
-          series: [{
-            type: 'bar', barMaxWidth: 16, data: parts.map((p) => p.pace ?? 0),
-            itemStyle: { color: t.seq, borderRadius: [0, 4, 4, 0] },
-            label: { show: true, position: 'right', color: t.ink2, fontSize: 11, formatter: (p) => `${Math.round(p.value * 100)} %` },
-            markArea: { silent: true, itemStyle: { color: t.good, opacity: 0.1 }, data: [[{ xAxis: 0.9 }, { xAxis: 1.1 }]] },
-            markLine: { silent: true, symbol: 'none', lineStyle: { color: t.ink2, type: 'dashed', width: 1 }, label: { formatter: 'Plan', color: t.ink2, fontSize: 11 }, data: [{ xAxis: 1 }] },
-          }],
-        });
-      }
-    }
-
-    // Bonus actions and badges: completion rate
-    for (const [hostId, kind, title] of [['card-bonus', 'bonus_action', 'Actions bonus · taux de complétion'], ['card-badges', 'badge', 'Défis (badges) · taux de réussite']]) {
-      const rows = res.q07?.rows;
-      let items = [];
-      if (rows) {
-        const by = new Map();
-        for (const r of regionFilter(rows, regions).filter((x) => x.kind === kind)) {
-          const p = by.get(r.key) || { key: r.key, title: r.title_fr || r.key, players: 0, eligible: 0, completions: 0 };
-          p.players += r.players || 0; p.completions += r.completions || 0;
-          p.eligible += r.eligible_players || (r.completion_rate ? r.players / r.completion_rate : 0);
-          by.set(r.key, p);
+      // BU split
+      {
+        const shown = REGION_ORDER.filter((r) => regions.includes(r));
+        let items = null;
+        let note = '';
+        if (rg && (rg.kind === 'all' ? res.q02 : rg.kind === 'week' ? res.q03 : res.q01)) {
+          const val = (r) => {
+            if (rg.kind === 'all') return sum(res.q02.rows.filter((x) => x.region_code === r), 'unique_players');
+            if (rg.kind === 'week') return sum(res.q03.rows.filter((x) => x.region_code === r && x.week_start === rg.week), 'wau');
+            return sum(daily(res, 'q01', rg, [r]), 'active_players');
+          };
+          note = rg.kind === 'custom' ? 'Jours-joueurs sur la période' : 'Joueurs uniques';
+          const vals = shown.map((r) => ({ r, v: val(r) }));
+          const total = vals.reduce((a, x) => a + x.v, 0) || 1;
+          const max = Math.max(...vals.map((x) => x.v), 1);
+          items = vals.sort((a, b) => b.v - a.v).map((x) => ({ name: `${x.r} · ${REGION_LABEL[x.r]}`, value: x.v, max, color: t.region(x.r), fill: t.region(x.r), label: FMT.pct0(x.v / total), sub: FMT.short(x.v) }));
         }
-        items = [...by.values()].map((p) => ({ ...p, rate: ratio(p.players, p.eligible) })).sort((a, b) => (b.rate ?? 0) - (a.rate ?? 0));
+        card('card-bu', { title: 'Répartition par BU', note, body: items ? barList(items, { cls: 'tight' }) : emptyBody('La répartition') });
       }
-      const id = chartCard(hostId, {
-        title, note: 'Joueurs ayant complété ÷ joueurs inscrits · campagne complète',
-        empty: rows ? null : noData('Ce graphique'),
-        table: rows && { cols: [{ label: 'Action', key: 'title' }, { label: 'Joueurs', key: 'players', num: true, fmt: FMT.int }, { label: 'Complétions', key: 'completions', num: true, fmt: FMT.int }, { label: 'Taux', key: 'rate', num: true, fmt: FMT.pct }], rows: items },
-      });
-      if (id) {
-        const hb = hbar(t, items.map((i) => i.title));
-        drawChart(id, {
-          ...baseOption(t, { grid: hb.grid }),
-          tooltip: { ...baseOption(t).tooltip, trigger: 'item', formatter: (p) => { const r = items[p.dataIndex]; return `<b>${r.title}</b><br>${FMT.pct(r.rate)} des joueurs<br>${FMT.int(r.players)} joueurs · ${FMT.int(r.completions)} complétions`; } },
-          xAxis: valAxis(t, { axisLabel: { color: t.muted, fontSize: 11, formatter: (v) => `${Math.round(v * 100)} %` } }),
-          yAxis: catAxis(t, items.map((i) => i.title), { inverse: true, axisLabel: hb.label }),
-          series: [{ type: 'bar', barMaxWidth: 16, itemStyle: { color: t.seq, borderRadius: [0, 4, 4, 0] }, data: items.map((i) => i.rate ?? 0),
-            label: { show: true, position: 'right', color: t.ink2, fontSize: 11, formatter: (p) => FMT.pct(p.value) } }],
-        });
-      }
+      renderAttention();
+      return;
     }
 
-    // Ads by partner
-    {
-      const rows = res.q09?.rows;
-      let parts = [];
-      if (rows) {
-        const by = new Map();
-        for (const r of regionFilter(rows, regions)) {
-          const p = by.get(r.partner) || { partner: r.partner, impressions: 0, completed: 0, unique: 0 };
-          p.impressions += r.impressions || 0; p.completed += r.completed_views || 0; p.unique += r.unique_viewers || 0;
-          by.set(r.partner, p);
+    if (tab === 'audience') {
+      {
+        const shown = REGION_ORDER.filter((r) => regions.includes(r));
+        const split = state.activeSplit && shown.length > 1;
+        const s = rg && res.q01 ? series(res, 'q01', rg, 'active_players') : null;
+        const c = s && !split ? compareSeries('q01', 'active_players') : null;
+        const legend = !s ? null : split ? shown.map((r) => ({ label: `${r} · ${REGION_LABEL[r]}`, color: t.region(r) })) : [{ label: 'Joueurs actifs', color: t.data }, ...(c ? [{ label: c.label, color: t.ghost, dash: true }] : [])];
+        const seg = el('div', { class: 'seg', role: 'group', 'aria-label': 'Affichage' },
+          el('button', { type: 'button', 'aria-pressed': String(!split), onclick: () => { state.activeSplit = false; renderCharts(); } }, 'Total'),
+          el('button', { type: 'button', 'aria-pressed': String(split), onclick: () => { state.activeSplit = true; renderCharts(); } }, 'Par BU'));
+        card('card-active', {
+          title: 'Joueurs actifs par jour', note: rg?.label, legend, tools: s && shown.length > 1 ? [seg] : [],
+          body: s ? chartBody('ch-active', 280) : emptyBody('La courbe'),
+          table: s && { cols: [{ label: 'Jour', key: 'day' }, { label: 'BU', key: 'region_code' }, { label: 'Joueurs actifs', key: 'active_players', num: true, fmt: FMT.int }, { label: 'Parties', key: 'games_played', num: true, fmt: FMT.int }], rows: daily(res, 'q01', rg, regions) },
+        });
+        if (s) {
+          const ser = split
+            ? shown.map((r) => lineSeries(r, series(res, 'q01', rg, 'active_players', { regions: [r] }).values, t.region(r), { lineStyle: { width: 1.5, color: t.region(r) } }))
+            : [lineSeries('Joueurs actifs', s.values, t.data, { areaStyle: { color: t.data, opacity: 0.08 } }),
+              ...(c ? [lineSeries(c.label, s.days.map((_, i) => c.values[i] ?? null), t.ghost, { lineStyle: { width: 1.5, color: t.ghost, type: [4, 4] } })] : [])];
+          drawChart('ch-active', {
+            ...baseOption(t),
+            tooltip: { ...baseOption(t).tooltip, formatter: (p) => tooltipRows(p) },
+            xAxis: catAxis(t, s.days.map(fmtDay), { boundaryGap: false }),
+            yAxis: valAxis(t),
+            series: ser,
+          });
         }
-        parts = [...by.values()].map((p) => ({ ...p, rate: ratio(p.completed, p.impressions) })).sort((a, b) => b.impressions - a.impressions);
       }
-      const legend = [{ label: 'Impressions', color: t.seqSoft }, { label: 'Vues uniques', color: t.seq }];
-      const id = chartCard('card-ads', {
-        title: 'Publicités par partenaire', note: 'Campagne complète · vues uniques = joueurs distincts par partenaire', legend,
-        empty: rows ? null : noData('Le graphique des publicités'),
-        table: rows && { cols: [{ label: 'Partenaire', key: 'partner' }, { label: 'Impressions', key: 'impressions', num: true, fmt: FMT.int }, { label: 'Vues uniques', key: 'unique', num: true, fmt: FMT.int }, { label: 'Vues complètes', key: 'completed', num: true, fmt: FMT.int }, { label: 'Taux de complétion', key: 'rate', num: true, fmt: FMT.pct }], rows: parts },
-      });
-      if (id) {
-        drawChart(id, {
-          ...baseOption(t),
-          tooltip: { ...baseOption(t).tooltip, axisPointer: { type: 'shadow', shadowStyle: { color: t.line, opacity: 0.4 } }, formatter: (p) => { const r = parts[p[0].dataIndex]; return `<b>${r.partner}</b><br>Impressions : ${FMT.int(r.impressions)}<br>Vues uniques : ${FMT.int(r.unique)}<br>Vues complètes : ${FMT.int(r.completed)} (${FMT.pct(r.rate)})`; } },
-          xAxis: catAxis(t, parts.map((p) => p.partner), { axisLabel: { color: t.ink2, fontSize: 12, interval: 0, hideOverlap: true } }),
-          yAxis: valAxis(t),
-          series: [
-            { name: 'Impressions', type: 'bar', barGap: '8%', barMaxWidth: 26, itemStyle: { color: t.seqSoft, borderRadius: [4, 4, 0, 0] }, data: parts.map((p) => p.impressions) },
-            { name: 'Vues uniques', type: 'bar', barMaxWidth: 26, itemStyle: { color: t.seq, borderRadius: [4, 4, 0, 0] }, data: parts.map((p) => p.unique) },
-          ],
+      {
+        const s = rg && res.q01 ? series(res, 'q01', rg, 'signups') : null;
+        card('card-signups', {
+          title: 'Inscriptions par jour', note: rg?.label,
+          body: s ? chartBody('ch-signups') : emptyBody('Le graphique'),
+          table: s && { cols: [{ label: 'Jour', key: 'day' }, { label: 'Inscriptions', key: 'v', num: true, fmt: FMT.int }], rows: s.days.map((d, i) => ({ day: d, v: s.values[i] })) },
         });
+        if (s) {
+          drawChart('ch-signups', {
+            ...baseOption(t),
+            tooltip: { ...baseOption(t).tooltip, axisPointer: { type: 'shadow', shadowStyle: { color: t.line, opacity: 0.5 } }, formatter: (p) => tooltipRows(p) },
+            xAxis: catAxis(t, s.days.map(fmtDay)),
+            yAxis: valAxis(t),
+            series: [{ name: 'Inscriptions', type: 'bar', data: s.values, barMaxWidth: 14, itemStyle: { color: t.data, borderRadius: [3, 3, 0, 0] } }],
+          });
+        }
       }
+      {
+        const rows = res.q12?.rows;
+        const range = rg && rows ? (rg.kind === 'all' ? { d0: rows[0]?.day || rg.d0, d1: rg.d1 } : { d0: rg.d0, d1: rg.d1 }) : null;
+        const scoped = range ? rows.filter((r) => r.day >= range.d0 && r.day <= range.d1) : null;
+        const apps = [
+          { name: 'App Couche-Tard', keys: ['couche_tard_ios', 'couche_tard_android'], color: t.data, show: state.banner !== 'Circle K' },
+          { name: 'App Circle K', keys: ['circle_k_ios', 'circle_k_android'], color: t.region('CC'), show: state.banner !== 'Couche-Tard' },
+        ].filter((a) => a.show);
+        card('card-downloads', {
+          title: "Téléchargements d'app par jour",
+          note: rg?.kind === 'all' ? 'Zone grise : même durée avant le lancement · toutes BU' : 'Toutes BU',
+          legend: scoped ? apps.map((a) => ({ label: a.name, color: a.color })) : null,
+          body: scoped && scoped.length ? chartBody('ch-downloads') : emptyBody('Le graphique'),
+          table: scoped && { cols: [{ label: 'Jour', key: 'day' }, ...apps.map((a) => ({ label: a.name, get: (r) => a.keys.reduce((s, k) => s + (r[k] || 0), 0), num: true, fmt: FMT.int })), { label: 'iOS via un lien web', get: (r) => (r.couche_tard_ios_web_referrer || 0) + (r.circle_k_ios_web_referrer || 0), num: true, fmt: FMT.int }], rows: scoped },
+        });
+        if (scoped && scoped.length) {
+          const launch = scoped.find((r) => r.day >= camp.start)?.day;
+          const pre = rg.kind === 'all' && launch && scoped[0].day < launch;
+          drawChart('ch-downloads', {
+            ...baseOption(t),
+            tooltip: { ...baseOption(t).tooltip, formatter: (p) => tooltipRows(p) },
+            xAxis: catAxis(t, scoped.map((r) => fmtDay(r.day)), { boundaryGap: false }),
+            yAxis: valAxis(t),
+            series: apps.map((a, i) => lineSeries(a.name, scoped.map((r) => a.keys.reduce((s, k) => s + (r[k] || 0), 0)), a.color, {
+              lineStyle: { width: 1.75, color: a.color },
+              markArea: i === 0 && pre ? { silent: true, itemStyle: { color: t.ghost, opacity: 0.1 }, label: { show: true, position: 'insideTop', formatter: 'Avant le lancement', color: t.muted, fontSize: 11 }, data: [[{ xAxis: fmtDay(scoped[0].day) }, { xAxis: fmtDay(addDays(launch, -1)) }]] } : undefined,
+            })),
+          });
+        }
+      }
+      return;
     }
 
-    // Coupon activations per day
-    {
-      const rows = res.q11?.rows;
-      const scoped = rows ? regionFilter(rows, regions, allRegionsSelected()) : null;
-      const allDays = scoped ? [...new Set(scoped.map((r) => r.day))].sort() : [];
-      const id = chartCard('card-coupons', {
-        title: 'Coupons activés en magasin par jour', note: "Incluant la période d'échange après la fin du jeu",
-        empty: rows ? null : noData('Le graphique des coupons'),
-        table: rows && { cols: [{ label: 'Jour', key: 'day' }, { label: 'BU', key: 'region_code' }, { label: 'Coupons activés', key: 'coupon_activations', num: true, fmt: FMT.int }, { label: 'Clients', key: 'redeeming_users', num: true, fmt: FMT.int }], rows: scoped },
-      });
-      if (id) {
-        drawChart(id, {
-          ...baseOption(t),
-          tooltip: { ...baseOption(t).tooltip, axisPointer: { type: 'shadow', shadowStyle: { color: t.line, opacity: 0.4 } }, formatter: (p) => tooltipRows(p) },
-          xAxis: catAxis(t, allDays.map(fmtDay)),
-          yAxis: valAxis(t),
-          series: [{ name: 'Coupons activés', type: 'bar', barMaxWidth: 12, itemStyle: { color: t.seq, borderRadius: [3, 3, 0, 0] }, data: allDays.map((d) => sum(scoped.filter((r) => r.day === d), 'coupon_activations')),
-            markLine: camp?.end ? { silent: true, symbol: 'none', lineStyle: { color: t.ink2, type: 'dashed', width: 1 }, label: { formatter: 'Fin du jeu', color: t.ink2, fontSize: 11 }, data: [{ xAxis: fmtDay(camp.end) }] } : undefined }],
+    if (tab === 'prix') {
+      {
+        const won = rg && res.q05 ? series(res, 'q05', rg, 'won', { redeem: true }) : null;
+        const red = rg && res.q11 ? series(res, 'q11', rg, 'coupon_activations', { redeem: true, allowUnassigned: allRegionsSelected() }) : null;
+        const ok = won && red;
+        card('card-prizes-daily', {
+          title: 'Prix gagnés et échangés par jour', note: rg?.kind === 'all' ? "Inclut la période d'échange après la fin du jeu" : rg?.label,
+          legend: ok ? [{ label: 'Gagnés', color: t.data }, { label: 'Échangés en magasin', color: t.region('QC') }] : null,
+          body: ok ? chartBody('ch-prizes') : emptyBody('Le graphique'),
+          table: ok && { cols: [{ label: 'Jour', key: 'day' }, { label: 'Gagnés', key: 'w', num: true, fmt: FMT.int }, { label: 'Échangés', key: 'r', num: true, fmt: FMT.int }], rows: won.days.map((d, i) => ({ day: d, w: won.values[i], r: red.values[i] })) },
+        });
+        if (ok) {
+          drawChart('ch-prizes', {
+            ...baseOption(t),
+            tooltip: { ...baseOption(t).tooltip, formatter: (p) => tooltipRows(p) },
+            xAxis: catAxis(t, won.days.map(fmtDay), { boundaryGap: false }),
+            yAxis: valAxis(t),
+            series: [lineSeries('Gagnés', won.values, t.data), lineSeries('Échangés en magasin', red.values, t.region('QC'))],
+          });
+        }
+      }
+      {
+        const rows = res.q04?.rows;
+        let parts = [];
+        if (rows) {
+          const by = new Map();
+          for (const r of regionFilter(rows, regions)) {
+            const p = by.get(r.partner) || { partner: r.partner, inventory: 0, won: 0, released: 0, net: 0, remaining: 0, planned: 0, redeemed: 0 };
+            p.inventory += r.inventory || 0; p.won += r.won || 0; p.released += r.released_to_stock || 0; p.net += r.net_awarded || 0;
+            p.remaining += r.remaining || 0; p.planned += r.planned_to_date || 0; p.redeemed += r.redeemed || 0;
+            by.set(r.partner, p);
+          }
+          parts = [...by.values()].map((p) => ({ ...p, pace: ratio(p.net, p.planned) })).sort((a, b) => (a.pace ?? 0) - (b.pace ?? 0));
+        }
+        const scaleMax = 1.25;
+        const items = parts.map((p) => {
+          const s = paceStatus(p.pace);
+          return {
+            name: p.partner, value: Math.min(p.pace ?? 0, scaleMax), max: scaleMax, tick: 1 / scaleMax,
+            fill: s?.cls === 'over' ? cssVar('--critical') : s?.cls === 'under' ? cssVar('--warning') : cssVar('--good'),
+            label: p.pace == null ? '—' : FMT.pct0(p.pace),
+            extra: [el('div', {}, s ? el('span', { class: `state ${s.cls}` }, s.label) : '—')],
+          };
+        });
+        card('card-pacing', {
+          title: 'Rythme de distribution par partenaire',
+          note: 'Prix distribués ÷ plan linéaire à date · trait = 100 % du plan',
+          body: rows ? barList(items, { cls: 'pacing', head: ['Partenaire', 'Distribués vs plan', 'Rythme', 'Statut'] }) : emptyBody('Le rythme'),
+          table: rows && {
+            cols: [
+              { label: 'Partenaire', key: 'partner' },
+              { label: 'Inventaire', key: 'inventory', num: true, fmt: FMT.int },
+              { label: 'Gagnés', key: 'won', num: true, fmt: FMT.int },
+              { label: 'Remis en stock', key: 'released', num: true, fmt: FMT.int },
+              { label: 'Distribués', key: 'net', num: true, fmt: FMT.int },
+              { label: 'Échangés', key: 'redeemed', num: true, fmt: FMT.int },
+              { label: 'Restants', key: 'remaining', num: true, fmt: FMT.int },
+              { label: 'Rythme', key: 'pace', num: true, fmt: FMT.pct },
+            ],
+            rows: parts,
+          },
         });
       }
+      {
+        const scoped = rg && res.q06 ? daily(res, 'q06', rg, regions) : null;
+        const src = [['entries_gameplay', 'Parties jouées'], ['entries_badge', 'Défis'], ['entries_bonus', 'Actions bonus'], ['entries_referral', 'Parrainage'], ['entries_other', 'Autres']]
+          .map(([k, label]) => ({ label, v: scoped ? sum(scoped, k) : 0 })).filter((s) => s.v > 0);
+        const total = src.reduce((a, s) => a + s.v, 0) || 1;
+        const max = Math.max(1, ...src.map((s) => s.v));
+        card('card-entries', {
+          title: 'Participations au grand prix par source', note: rg?.label,
+          body: scoped ? barList(src.map((s) => ({ name: s.label, value: s.v, max, label: FMT.pct0(s.v / total), sub: FMT.short(s.v) }))) : emptyBody('La répartition'),
+        });
+      }
+      return;
     }
 
-    // LIFT revenue per week
-    {
-      const rows = res.q10?.rows;
-      const scoped = rows ? regionFilter(rows, regions) : null;
-      const weeks = scoped ? [...new Set(scoped.map((r) => mondayOf(r.day)))].sort() : [];
-      const agg = weeks.map((w) => { const s = scoped.filter((r) => mondayOf(r.day) === w); return { week: w, rev: sum(s, 'lift_revenue'), tx: sum(s, 'lift_transactions'), items: sum(s, 'items') }; });
-      const id = chartCard('card-lift', {
-        title: 'Revenus LIFT attribués au jeu, par semaine', note: 'Achats liés au numéro de téléphone saisi à la caisse',
-        empty: rows ? null : noData('Le graphique LIFT'),
-        table: rows && { cols: [{ label: 'Semaine du', get: (r) => fmtDay(r.week) }, { label: 'Revenus', key: 'rev', num: true, fmt: FMT.money2 }, { label: 'Transactions', key: 'tx', num: true, fmt: FMT.int }, { label: 'Panier moyen', get: (r) => ratio(r.rev, r.tx), num: true, fmt: FMT.money2 }], rows: agg },
-      });
-      if (id) {
-        drawChart(id, {
-          ...baseOption(t),
-          tooltip: { ...baseOption(t).tooltip, axisPointer: { type: 'shadow', shadowStyle: { color: t.line, opacity: 0.4 } }, formatter: (p) => { const r = agg[p[0].dataIndex]; return `<b>Semaine du ${fmtDay(r.week)}</b><br>Revenus : ${FMT.money2(r.rev)}<br>Transactions : ${FMT.int(r.tx)}<br>Panier moyen : ${FMT.money2(ratio(r.rev, r.tx) || 0)}`; } },
-          xAxis: catAxis(t, weeks.map(fmtDay)),
-          yAxis: valAxis(t, { axisLabel: { color: t.muted, fontSize: 11, formatter: (v) => `${compact.format(v)} $` } }),
-          series: [{ name: 'Revenus', type: 'bar', barMaxWidth: 34, itemStyle: { color: t.seq, borderRadius: [4, 4, 0, 0] }, data: agg.map((a) => a.rev) }],
+    if (tab === 'mecaniques') {
+      for (const [hostId, kind, title] of [['card-bonus', 'bonus_action', 'Actions bonus'], ['card-badges', 'badge', 'Défis (badges)']]) {
+        const rows = res.q07?.rows;
+        let items = [];
+        if (rows) {
+          const by = new Map();
+          for (const r of regionFilter(rows, regions).filter((x) => x.kind === kind)) {
+            const p = by.get(r.key) || { key: r.key, title: r.title_fr || r.key, players: 0, eligible: 0, completions: 0 };
+            p.players += r.players || 0; p.completions += r.completions || 0;
+            p.eligible += r.eligible_players || (r.completion_rate ? r.players / r.completion_rate : 0);
+            by.set(r.key, p);
+          }
+          items = [...by.values()].map((p) => ({ ...p, rate: ratio(p.players, p.eligible) })).sort((a, b) => (b.rate ?? 0) - (a.rate ?? 0));
+        }
+        const max = Math.max(0.0001, ...items.map((i) => i.rate || 0));
+        card(hostId, {
+          title, note: 'Part des joueurs · toute la campagne',
+          body: rows ? barList(items.map((i) => ({ name: i.title, value: i.rate || 0, max, label: FMT.pct(i.rate || 0), sub: FMT.short(i.players) }))) : emptyBody('La liste'),
+          table: rows && { cols: [{ label: 'Action', key: 'title' }, { label: 'Joueurs', key: 'players', num: true, fmt: FMT.int }, { label: 'Complétions', key: 'completions', num: true, fmt: FMT.int }, { label: 'Taux', key: 'rate', num: true, fmt: FMT.pct }], rows: items },
         });
+      }
+      {
+        const rows = res.q09?.rows;
+        let parts = [];
+        if (rows) {
+          const by = new Map();
+          for (const r of regionFilter(rows, regions)) {
+            const p = by.get(r.partner) || { partner: r.partner, impressions: 0, completed: 0, unique: 0 };
+            p.impressions += r.impressions || 0; p.completed += r.completed_views || 0; p.unique += r.unique_viewers || 0;
+            by.set(r.partner, p);
+          }
+          parts = [...by.values()].map((p) => ({ ...p, rate: ratio(p.completed, p.impressions) })).sort((a, b) => b.unique - a.unique);
+        }
+        const max = Math.max(1, ...parts.map((p) => p.unique));
+        card('card-ads', {
+          title: 'Publicités par partenaire', note: 'Joueurs distincts exposés · toute la campagne',
+          body: rows ? barList(parts.map((p) => ({ name: p.partner, value: p.unique, max, label: FMT.short(p.unique), sub: `${FMT.short(p.impressions)} impr.` })), { head: ['Partenaire', 'Vues uniques', 'Total'] }) : emptyBody('La liste'),
+          table: rows && { cols: [{ label: 'Partenaire', key: 'partner' }, { label: 'Impressions', key: 'impressions', num: true, fmt: FMT.int }, { label: 'Vues uniques', key: 'unique', num: true, fmt: FMT.int }, { label: 'Vues complètes', key: 'completed', num: true, fmt: FMT.int }, { label: 'Taux de complétion', key: 'rate', num: true, fmt: FMT.pct }], rows: parts },
+        });
+      }
+      return;
+    }
+
+    if (tab === 'commercial') {
+      {
+        const s = rg && res.q11 ? series(res, 'q11', rg, 'coupon_activations', { redeem: true, allowUnassigned: allRegionsSelected() }) : null;
+        card('card-coupons', {
+          title: 'Coupons activés en magasin par jour', note: rg?.kind === 'all' ? "Inclut la période d'échange" : rg?.label,
+          body: s ? chartBody('ch-coupons') : emptyBody('Le graphique'),
+          table: s && { cols: [{ label: 'Jour', key: 'day' }, { label: 'Coupons activés', key: 'v', num: true, fmt: FMT.int }], rows: s.days.map((d, i) => ({ day: d, v: s.values[i] })) },
+        });
+        if (s) {
+          drawChart('ch-coupons', {
+            ...baseOption(t),
+            tooltip: { ...baseOption(t).tooltip, axisPointer: { type: 'shadow', shadowStyle: { color: t.line, opacity: 0.5 } }, formatter: (p) => tooltipRows(p) },
+            xAxis: catAxis(t, s.days.map(fmtDay)),
+            yAxis: valAxis(t),
+            series: [{ name: 'Coupons activés', type: 'bar', data: s.values, barMaxWidth: 12, itemStyle: { color: t.data, borderRadius: [3, 3, 0, 0] },
+              markLine: rg.kind === 'all' && camp.redemptionEnd > camp.end ? { silent: true, symbol: 'none', lineStyle: { color: t.muted, type: [4, 4], width: 1 }, label: { formatter: 'Fin du jeu', color: t.muted, fontSize: 11 }, data: [{ xAxis: fmtDay(camp.end) }] } : undefined }],
+          });
+        }
+      }
+      {
+        const scoped = rg && res.q10 ? daily(res, 'q10', rg, regions) : null;
+        const weeks = scoped ? [...new Set(scoped.map((r) => mondayOf(r.day)))].sort() : [];
+        const agg = weeks.map((w) => { const s = scoped.filter((r) => mondayOf(r.day) === w); return { week: w, rev: sum(s, 'lift_revenue'), tx: sum(s, 'lift_transactions') }; });
+        card('card-lift', {
+          title: 'Revenus LIFT attribués au jeu, par semaine', note: 'Achats liés au numéro de téléphone saisi à la caisse',
+          body: scoped && agg.length ? chartBody('ch-lift') : emptyBody('Le graphique'),
+          table: scoped && { cols: [{ label: 'Semaine du', get: (r) => fmtDay(r.week) }, { label: 'Revenus', key: 'rev', num: true, fmt: FMT.money2 }, { label: 'Transactions', key: 'tx', num: true, fmt: FMT.int }, { label: 'Panier moyen', get: (r) => ratio(r.rev, r.tx), num: true, fmt: FMT.money2 }], rows: agg },
+        });
+        if (scoped && agg.length) {
+          drawChart('ch-lift', {
+            ...baseOption(t),
+            tooltip: { ...baseOption(t).tooltip, axisPointer: { type: 'shadow', shadowStyle: { color: t.line, opacity: 0.5 } }, formatter: (p) => { const r = agg[p[0].dataIndex]; return `<b>Semaine du ${fmtDay(r.week)}</b><br>Revenus : ${FMT.money2(r.rev)}<br>Transactions : ${FMT.int(r.tx)}<br>Panier moyen : ${FMT.money2(ratio(r.rev, r.tx) || 0)}`; } },
+            xAxis: catAxis(t, weeks.map(fmtDay)),
+            yAxis: valAxis(t, (v) => `${compact.format(v)} $`),
+            series: [{ name: 'Revenus', type: 'bar', barMaxWidth: 28, itemStyle: { color: t.data, borderRadius: [4, 4, 0, 0] }, data: agg.map((a) => a.rev) }],
+          });
+        }
       }
     }
   }
 
   // ---------------------------------------------------------------------------
-  // Section subtitles, definitions, freshness
+  // Points of attention (overview)
   // ---------------------------------------------------------------------------
-  function renderSubtitles() {
-    const rg = currentRange();
+  function renderAttention() {
+    const camp = currentCampaign();
+    const res = state.results[camp?.code] || {};
     const regions = activeRegions();
-    const scope = regions.length === REGION_ORDER.length ? 'toutes les BU' : regions.map((r) => `${r} · ${REGION_LABEL[r]}`).join(', ');
-    const txt = rg ? `${rg.kind === 'all' ? 'Campagne complète' : rg.label} · ${scope}` : '';
-    for (const id of ['sub-audience', 'sub-prix', 'sub-meca', 'sub-com']) $(id).textContent = txt;
+    const items = [];
+    const go = (tab, text) => el('button', { type: 'button', class: 'link go', onclick: () => selectTab(tab) }, text);
+    if (isReady(camp)) {
+      const today = todayIn(camp.tz);
+      if (today < camp.start) items.push({ cls: '', text: `La campagne commence le ${fmtDayLong(camp.start)}.` });
+      else if (today <= camp.end) items.push({ cls: 'good', text: `Campagne en cours jusqu'au ${fmtDayLong(camp.end)}.` });
+      else items.push({ cls: '', text: `Jeu terminé le ${fmtDayLong(camp.end)}${camp.redemptionEnd > camp.end ? ` · coupons échangeables jusqu'au ${fmtDayLong(camp.redemptionEnd)}` : ''}.` });
+    }
+    if (res.q04) {
+      const by = new Map();
+      for (const r of regionFilter(res.q04.rows, regions)) {
+        const p = by.get(r.partner) || { net: 0, planned: 0, inv: 0, rem: 0 };
+        p.net += r.net_awarded || 0; p.planned += r.planned_to_date || 0; p.inv += r.inventory || 0; p.rem += r.remaining || 0;
+        by.set(r.partner, p);
+      }
+      const list = [...by.entries()].map(([name, p]) => ({ name, pace: ratio(p.net, p.planned) }));
+      const under = list.filter((p) => p.pace != null && p.pace < 0.9).sort((a, b) => a.pace - b.pace);
+      const over = list.filter((p) => p.pace != null && p.pace > 1.1);
+      if (over.length) items.push({ cls: 'bad', text: `${over.length} partenaire${over.length > 1 ? 's' : ''} au-dessus du plan de distribution : ${over.map((p) => p.name).join(', ')}.`, link: go('prix', 'Voir les prix') });
+      if (under.length) items.push({ cls: 'warn', text: `${under.length} partenaire${under.length > 1 ? 's' : ''} sur ${list.length} sous le plan de distribution. Le plus bas : ${under[0].name} à ${FMT.pct0(under[0].pace)}.`, link: go('prix', 'Voir les prix') });
+      const inv = [...by.values()].reduce((a, p) => a + p.inv, 0);
+      const rem = [...by.values()].reduce((a, p) => a + p.rem, 0);
+      if (inv) items.push({ cls: '', text: `${FMT.pct0(rem / inv)} de l'inventaire de prix n'a pas été distribué (${FMT.int(rem)} prix).` });
+    }
+    const rate = computeKpi(KPI.redemption_rate, res, camp, currentRange(), regions);
+    if (rate != null) items.push({ cls: '', text: `${FMT.pct0(rate)} des prix gagnés ont été échangés en magasin.` });
+    items.push({ cls: 'bad', text: 'Trafic en magasin et contribution des coupons au trafic : en attente des données des points de vente.', link: go('commercial', 'Voir') });
+    items.push({ cls: 'warn', text: "Téléchargements : total toutes provenances. L'attribution au média payant n'est pas encore branchée." });
+    if (state.compare === 'fy' && !comparisonCampaign(camp)) items.push({ cls: '', text: 'Comparaison FY26 : aucune édition comparable pour cette campagne.' });
+    const errs = Object.keys(state.errors[camp?.code] || {});
+    if (errs.length) items.push({ cls: 'bad', text: `${errs.length} requête${errs.length > 1 ? 's ont' : ' a'} échoué à la dernière actualisation : certaines sections peuvent être incomplètes.` });
+
+    $('attention').replaceChildren(
+      el('h3', {}, "Points d'attention"),
+      el('ul', {}, items.map((i) => el('li', { class: i.cls || null }, el('span', {}, i.text), i.link || el('span')))));
   }
+
+  // ---------------------------------------------------------------------------
+  // Definitions, freshness, messages
+  // ---------------------------------------------------------------------------
   function renderDefinitions() {
     const label = { available: 'Disponible', partial: 'Partiel', missing: 'Source manquante' };
+    const cls = { available: 'ok', partial: 'under', missing: 'over' };
     $('def-table').replaceChildren(
       el('thead', {}, el('tr', {}, ['KPI', 'Définition', 'Source', 'État'].map((h) => el('th', {}, h)))),
       el('tbody', {}, DATA.kpis.map((k) => el('tr', {},
         el('td', {}, k.label_fr),
         el('td', {}, k.definition_fr || '—'),
         el('td', {}, k.source_fr || '—'),
-        el('td', {}, k.status === 'available' ? label.available : pillFor(k.status, k.source_fr))))));
+        el('td', {}, el('span', { class: `state ${cls[k.status] || ''}` }, label[k.status] || k.status))))));
   }
   function renderFreshness() {
     const camp = currentCampaign();
@@ -1002,18 +1164,14 @@ FROM rctapi_minigame_editions WHERE deleted_at IS NULL ORDER BY start_at DESC`;
     if (state.busy) {
       dot.classList.add('busy');
       const p = state.progress;
-      text.textContent = p ? `Actualisation en cours · ${p.done} / ${p.total} requêtes` : 'Actualisation en cours…';
+      text.textContent = p ? `Actualisation · ${p.done} sur ${p.total}` : 'Actualisation…';
       return;
     }
     if (meta?.refreshedAt) {
-      dot.classList.add(camp?.status === 'live' ? 'live' : 'stale');
-      text.textContent = `Données au ${stampFmt.format(new Date(meta.refreshedAt))}${meta.partial ? ' · partielles' : ''}`;
-    } else if (state.results[camp?.code]) {
-      text.textContent = 'Données chargées';
-    } else {
-      text.textContent = caps.mcp ? 'Aucune donnée publiée · lancez une actualisation' : 'Aucune donnée publiée pour cette campagne';
-    }
-    $('campaign-title').textContent = camp ? camp.name : 'Minijeux';
+      if (camp?.status === 'live') dot.classList.add('live');
+      text.textContent = `Données au ${stampFmt.format(new Date(meta.refreshedAt))}${meta.partial ? ' · incomplètes' : ''}`;
+    } else if (state.results[camp?.code]) text.textContent = 'Données chargées';
+    else text.textContent = 'Aucune donnée publiée';
   }
   function setPageMsg(html) {
     const node = $('page-msg');
@@ -1022,16 +1180,14 @@ FROM rctapi_minigame_editions WHERE deleted_at IS NULL ORDER BY start_at DESC`;
     node.innerHTML = html;
   }
 
-  const NO_REGION_MSG = '<strong>Aucune BU ne correspond à ces filtres.</strong> Le Québec est la seule BU Couche-Tard ; choisissez une autre bannière ou une autre BU.';
+  const NO_REGION_MSG = '<strong>Aucune BU ne correspond à ces filtres.</strong> Le Québec est la seule BU Couche-Tard : choisissez une autre bannière ou une autre BU.';
   let regionMsgShown = false;
   function renderAll() {
-    renderSubtitles();
     renderFreshness();
-    renderTiles(kpiValues());
+    renderKpis();
     renderCharts();
     const anyData = !!state.results[state.campaign];
-    $('btn-export-kpi').hidden = !(caps.downloads && anyData);
-    $('btn-export-data').hidden = !(caps.downloads && anyData);
+    $('export-menu').hidden = !(caps.downloads && anyData);
     if (!activeRegions().length) { setPageMsg(NO_REGION_MSG); regionMsgShown = true; }
     else if (regionMsgShown) { setPageMsg(null); regionMsgShown = false; }
   }
@@ -1175,7 +1331,6 @@ FROM rctapi_minigame_editions WHERE deleted_at IS NULL ORDER BY start_at DESC`;
     } else if (message) setPageMsg(escapeHtml(message));
     renderAll();
   }
-  const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
   let autoTried = false;
   function maybeAutoRefresh() {
@@ -1209,10 +1364,11 @@ FROM rctapi_minigame_editions WHERE deleted_at IS NULL ORDER BY start_at DESC`;
   const csv = (rows) => '﻿' + rows.map((r) => r.map(csvCell).join(';')).join('\r\n');
   function filterLabel() {
     const rg = currentRange();
-    const chip = REGION_CHIPS.find((c) => c.id === state.regionChip);
-    return { period: rg?.label || '', bu: chip?.label || '', banner: state.banner === 'all' ? 'Toutes' : state.banner };
+    const opt = REGION_OPTIONS.find((o) => o.id === state.region);
+    return { period: rg ? `${rg.label} (${rg.d0} au ${rg.d1})` : '', bu: opt?.label || '', banner: state.banner === 'all' ? 'Toutes' : state.banner };
   }
   async function save(filename, data) {
+    $('export-menu').open = false;
     try { await caps.downloads.save({ filename, data }); }
     catch (e) {
       if (e?.code === 'declined') return;
@@ -1227,9 +1383,10 @@ FROM rctapi_minigame_editions WHERE deleted_at IS NULL ORDER BY start_at DESC`;
     const asOf = meta?.refreshedAt ? new Date(meta.refreshedAt).toISOString() : '';
     const sections = { audience: 'Audience et engagement', prix: 'Prix et distribution', mecaniques: 'Mécaniques de jeu', commercial: 'Impact commercial' };
     const rows = [['Campagne', 'Période', 'BU', 'Bannière', 'Section', 'KPI', 'Valeur', 'Comparaison', 'Valeur de comparaison', 'Variation', 'Portée', 'État de la source', 'Note', 'Données au']];
-    for (const { k, value, cmp, cmpInfo } of kpiValues()) {
+    for (const { k, value, cmp, cmpInfo, rg } of KPIS.map(kpiValue)) {
       const variation = value != null && cmp != null ? (k.delta === 'pts' ? `${((value - cmp) * 100).toFixed(1)} pts` : cmp ? `${(((value - cmp) / Math.abs(cmp)) * 100).toFixed(1)} %` : '') : '';
-      rows.push([camp.name, f.period, f.bu, f.banner, sections[k.section], k.label, value, cmpInfo.na ? 'n/d' : cmpInfo.label, cmp, variation.replace('.', ','), scopeText(k, currentRange()) || 'Période sélectionnée', { available: 'Disponible', partial: 'Partiel', missing: 'Source manquante' }[sourceStatus(k)], k.note || '', asOf]);
+      const scope = k.scope === 'stock' ? 'À ce jour' : k.scope === 'campaign' ? 'Total de campagne' : (k.exact && rg?.kind === 'custom' && value == null ? NEEDS_EXACT : 'Période sélectionnée');
+      rows.push([camp.name, f.period, f.bu, f.banner, sections[k.section], k.label, value, cmpInfo.na ? 'n/d' : cmpInfo.label, cmp, variation.replace('.', ','), scope, { available: 'Disponible', partial: 'Partiel', missing: 'Source manquante' }[sourceStatus(k)], k.note || '', asOf]);
     }
     save(`kpi-${camp.code}-${state.period}-${new Date().toISOString().slice(0, 10)}.csv`, csv(rows));
   });
@@ -1253,7 +1410,7 @@ FROM rctapi_minigame_editions WHERE deleted_at IS NULL ORDER BY start_at DESC`;
   // Theme changes redraw charts with the new tokens
   // ---------------------------------------------------------------------------
   let themeTimer = null;
-  const redraw = () => { clearTimeout(themeTimer); themeTimer = setTimeout(renderCharts, 60); };
+  const redraw = () => { clearTimeout(themeTimer); themeTimer = setTimeout(renderAll, 60); };
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', redraw);
   new MutationObserver(redraw).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
@@ -1263,6 +1420,7 @@ FROM rctapi_minigame_editions WHERE deleted_at IS NULL ORDER BY start_at DESC`;
   loadFilters();
   renderFilters();
   renderDefinitions();
+  selectTab(state.tab);
   renderAll();
 
   async function boot() {
@@ -1289,7 +1447,7 @@ FROM rctapi_minigame_editions WHERE deleted_at IS NULL ORDER BY start_at DESC`;
       } catch (e) { /* keep seeds */ }
     }
     onCampaignChange();
-    if (!db && !mcp) setPageMsg("Ouvrez ce rapport dans claude.ai pour voir les données publiées. Les définitions des KPI restent consultables plus bas.");
+    if (!db && !mcp) setPageMsg('Ouvrez ce rapport dans claude.ai pour voir les données publiées. Les définitions des KPI restent consultables dans l\'onglet Définitions.');
     if (mcp && caps.canWrite) {
       setInterval(() => { if (currentCampaign()?.status === 'live' && !document.hidden) refresh(); }, LIVE_REFRESH_MS);
     }

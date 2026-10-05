@@ -31,20 +31,41 @@ then republish `dashboard/dist/index.html` to the same artifact URL.
 
 The first time an editor opens the page with the connector, it fills the snapshot automatically.
 
+## Layout
+
+The page is organized in tabs, so each view stays short:
+
+| Tab | Content |
+|---|---|
+| Vue d'ensemble | 4 headline KPIs with sparklines (joueurs uniques, parties, prix échangés, téléchargements), 4 secondary KPIs, the active-player trend with the comparison period dashed, the split by BU, and auto-generated points of attention (pacing, unused inventory, redemption rate, data gaps) |
+| Audience | 9 audience KPIs; active players (Total / Par BU toggle), signups, downloads vs pre-launch |
+| Prix | 6 prize KPIs; won vs redeemed per day, pacing per partner (bar + 100 % marker + status), grand-prize entries by source |
+| Mécaniques | Bonus actions, badges and ads per partner as ranked bar lists |
+| Commercial | LIFT KPIs, coupons per day, LIFT revenue per week; store traffic flagged as missing |
+| Définitions | Every KPI with its French definition, source and data status |
+
+The selected tab is kept in the link (`#prix`, `#audience`…) and in the viewer's browser.
+Every chart has a "Tableau" toggle that shows its data.
+
 ## Filters and comparisons
 
 - **Campaign**: from the editions table, or from the seed list until that table exists.
-- **Period**: the whole campaign, or one Monday-to-Sunday week.
+- **Period**:
+  - Toute la campagne. Prize redemptions then also count the coupon redemption window.
+  - 7 derniers jours.
+  - Each Monday-to-Sunday week.
+  - **Personnalisée**: any date range within the campaign. A custom range that matches the whole
+    campaign or a week is detected automatically, so unique players stay exact.
+  - On any other custom range, unique players and active days per player show "Disponible pour
+    toute la campagne ou une semaine", because distinct counts can't be summed across days.
 - **BU**: All, Eastern (ATL + QC), ATL, QC, CC or WC.
 - **Banner**: Couche-Tard = QC, Circle K = the rest. For downloads, the banner selects the app.
 - **Comparison**:
-  - **Previous period**: the previous week. For the whole campaign, only downloads have a baseline:
-    the same number of days before launch.
-  - **FY26**: uses `comparison_edition_id`, aligned on campaign day (day N vs day N). It shows "n/d"
-    until a comparable edition exists.
-
-KPIs that only exist for the whole campaign or as a current stock (new players, repeat-visit rate,
-mechanics, remaining prizes) say so on their tile.
+  - **Previous period**: the window of the same length just before the selected one. It is hidden
+    when that window would start before launch, except for downloads, which compare with the same
+    number of days before launch.
+  - **FY26**: uses `comparison_edition_id`, aligned on campaign day.
+  - A change is shown only when the comparison exists. Otherwise the tile stays quiet.
 
 ## Export
 
